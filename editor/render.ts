@@ -101,6 +101,8 @@ export function view(
   const drafts = el('h3', 'Draft'),
     prError = el('p')
   function focus() {
+    const heading = columns.get('needs_you')?.lane.querySelector('h2')
+    if (heading?.getAttribute('aria-expanded') === 'false') heading.click()
     columns.get('needs_you')?.lane.scrollIntoView({ block: 'nearest', inline: 'center' })
     columns.get('needs_you')?.list.querySelector('article')?.focus()
   }

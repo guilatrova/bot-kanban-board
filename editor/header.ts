@@ -43,16 +43,9 @@ export function boardHeader(
   filter.append(icon('M3 5h18M6 12h12M10 19h4'))
   filter.setAttribute('aria-label', 'Filters')
   updated.setAttribute('aria-label', 'Refresh board')
-  header.append(
-    el('h1', 'Bots board'),
-    demo,
-    el('span', '', 'sep'),
-    filters,
-    unreachable,
-    el('span', '', 'spacer'),
-    updated,
-    filter,
-  )
+  const brand = el('h1', 'Bots board', 'brand')
+  brand.prepend(icon('M2 2h3.6v12H2zM6.7 2h3.6v8H6.7zM11.4 2H15v5h-3.6z', 16))
+  header.append(brand, demo, el('span', '', 'sep'), filters, unreachable, el('span', '', 'spacer'), updated, filter)
   document.body.append(header, message, lanes)
 
   return {
@@ -93,10 +86,13 @@ export function boardHeader(
             return chip
           }),
       )
+      const warnings = board.bots.flatMap((b) =>
+        b.warning && !b.count ? [b.name + ' · ' + describeFailure(b.warning)] : [],
+      )
       message.textContent =
         data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error && !c.warning)
           ? 'No bots yet. Open Items will appear here when a bot creates one.'
-          : ''
+          : warnings.join(' · ')
     },
   }
 }

@@ -1,4 +1,4 @@
-import { itemKey, type Item } from '../src/core/model'
+import { isClosed, itemKey, type Item } from '../src/core/model'
 import {
   moveState,
   moveTimeout,
@@ -91,7 +91,7 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     const parent = popover(anchor)
     parent.node.setAttribute('role', 'menu')
     const shortcuts = new Map<string, HTMLButtonElement>()
-    function entry(label: string, hint: string, action: () => unknown, current = false) {
+    function entry(label: string, hint: string, action: () => unknown, current = false, tone?: string) {
       const row = button(
         label,
         () => {
@@ -105,6 +105,11 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
       if (current) {
         row.setAttribute('aria-checked', 'true')
         row.prepend('✓ ')
+      }
+      if (tone) {
+        const dot = el('span', '', 'dot')
+        dot.style.setProperty('--dot', 'var(--' + tone + ')')
+        row.prepend(dot)
       }
       parent.node.append(row)
       shortcuts.set(hint.toLowerCase(), row)
@@ -121,10 +126,11 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
         key,
         () => move(item, target),
         item.status === target || (item.status === 'planned' && target === 'waiting'),
+        target,
       )
     parent.node.append(el('hr'))
-    entry('Complete', 'D', () => move(item, 'done'))
-    entry('Cancel…', '⌫', () => move(item, 'canceled'))
+    entry('Complete', 'D', () => move(item, 'done'), false, 'ok')
+    entry('Cancel…', '⌫', () => move(item, 'canceled'), false, 'bad')
     parent.node.append(el('hr'))
     let sub: ReturnType<typeof popover> | undefined
     function openSub() {
@@ -133,6 +139,17 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
         return
       }
       sub = popover(trigger, true)
+      sub.node.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            parent.close(true)
+          }
+        },
+        { capture: true },
+      )
       for (const choice of snoozeChoices)
         sub.node.append(
           button(
@@ -185,7 +202,7 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     label.append(select)
     return label
   }
-  const sleep = (i: Item) => snoozed(i, state.sleeps[itemKey(i)], Date.now())
+  const sleep = (i: Item) => !isClosed(i.status) && snoozed(i, state.sleeps[itemKey(i)], Date.now())
   let list: HTMLDialogElement | undefined
   function showList(items: Item[]) {
     list = panel('Snoozed Items')

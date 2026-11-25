@@ -719,6 +719,26 @@ header .chips {
 .spacer {
   flex: 1;
 }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.brand svg {
+  width: 15px;
+  height: 15px;
+  fill: var(--dim);
+}
+.meta time {
+  white-space: nowrap;
+}
+.mi .dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--dot);
+}
 .stamp,
 .ico {
   display: flex;

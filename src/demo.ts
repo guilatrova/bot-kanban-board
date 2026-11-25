@@ -18,6 +18,9 @@ export function demoBoard(state: string | null = null) {
     ['needs_you', 'Confirm the sampling interval', 'Should the sampler run every hour?'],
     ['in_progress', 'Prepare the seedling inventory', 'Imported the greenhouse records.'],
   ]
+  entries.push(['planned', 'Plan the next soil survey', ''])
+  if (state !== 'empty')
+    entries.push(['done', 'Collect the spring readings', ''], ['canceled', 'Retire the old sampling route', ''])
   const demoItems = entries.flatMap(([status, title, subject], n) =>
     items(
       {
@@ -31,6 +34,7 @@ export function demoBoard(state: string | null = null) {
                 ? 'Review orchard/sample#' + (n + 1) + ' before collecting the first batch.'
                 : 'Prepare the seasonal field survey.',
             doneMeans: 'The field notes are ready for review.',
+            closedAt: status === 'done' || status === 'canceled' ? Date.now() : undefined,
             lastActivityAt: Date.now() - (n + 1) * 3600000,
             chat: { title: 'Field survey' },
             question: { text: subject, options: ['Use spring readings', 'Use autumn readings'] },

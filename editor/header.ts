@@ -69,25 +69,36 @@ export function boardHeader(
       )
       controls.sync([...data.prs.map((p) => p.repo), ...trees.map((w) => w.repo), ...data.merged.map((p) => p.repo)])
       filters.replaceChildren(
-        ...board.bots
-          .filter((b) => b.count > 0)
-          .map((b) => {
-            const key = botKey(b.computer, b.name)
-            const chip = button(
-              b.name + ' ' + b.count,
-              (e) => {
-                const all = board.bots.filter((b) => b.count > 0).map((b) => botKey(b.computer, b.name))
-                const bots = [...toggleBot(selected, all, key, e.altKey || e.metaKey)]
-                saved.current = { ...saved.current, name: '', bots: bots.length ? bots : 'all' }
-                update()
-              },
-              'chip',
-            )
-            chip.prepend(badge(b.computer, b.name))
-            if (b.warning) chip.append(el('small', describeFailure(b.warning)))
-            chip.setAttribute('aria-pressed', String(!selected.size || selected.has(key)))
-            return chip
-          }),
+        ...board.chips.map((b) => {
+          const key = botKey(b.computer, b.name)
+          function toggle(solo: boolean) {
+            const all = board.chips.map((b) => botKey(b.computer, b.name))
+            const bots = [...toggleBot(selected, all, key, solo)]
+            saved.current = { ...saved.current, name: '', bots: bots.length ? bots : 'all' }
+            update()
+          }
+          const chip = button(b.name + ' ' + b.cards, (e) => toggle(e.altKey || e.metaKey), 'chip')
+          chip.classList.toggle('solo', selected.size === 1 && selected.has(key))
+          chip.oncontextmenu = (e) => {
+            e.preventDefault()
+            toggle(true)
+          }
+          const tip = el(
+            'span',
+            'Click to hide · Right-click or ⌥-click to show only ' + b.name + "'s cards, merges included",
+            'chip-tip',
+          )
+          chip.append(tip)
+          chip.onmouseenter = () => {
+            const r = chip.getBoundingClientRect()
+            tip.style.left = Math.max(8, Math.min(r.left, innerWidth - tip.offsetWidth - 8)) + 'px'
+            tip.style.top = Math.min(innerHeight - tip.offsetHeight - 8, r.bottom + 8) + 'px'
+          }
+          chip.prepend(badge(b.computer, b.name))
+          if (b.warning) chip.append(el('small', describeFailure(b.warning)))
+          chip.setAttribute('aria-pressed', String(!selected.size || selected.has(key)))
+          return chip
+        }),
       )
       const warnings = board.bots.flatMap((b) =>
         b.warning && !b.count ? [b.name + ' · ' + describeFailure(b.warning)] : [],

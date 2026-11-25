@@ -71,7 +71,7 @@ export function assessMerge(pr: PullRequest, repo: RepositoryFacts) {
   return { canMerge: !blockers.length, blockers, warnings, methods, defaultMethod: methods[0] }
 }
 
-export interface MergedPr extends IssueRef {
+export interface MergedPr extends IssueRef, Partial<Pick<PullRequest, 'head' | 'body' | 'closes'>> {
   title: string
   url: string
   mergedAt: string

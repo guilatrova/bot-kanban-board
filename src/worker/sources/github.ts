@@ -69,7 +69,7 @@ export function github(path: string) {
             'api',
             'graphql',
             '-f',
-            'query=query($search:String!){search(query:$search,type:ISSUE,first:40){nodes{... on PullRequest {number title url mergedAt repository{nameWithOwner}}}}}',
+            'query=query($search:String!){search(query:$search,type:ISSUE,first:40){nodes{... on PullRequest {number title url mergedAt headRefName body closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} repository{nameWithOwner}}}}}',
             '-f',
             'search=is:pr is:merged user:' + login + ' merged:>=' + midnight.toISOString() + ' sort:updated-desc',
           ],
@@ -78,7 +78,7 @@ export function github(path: string) {
               rows(obj(obj(obj(v).data).search).nodes)
                 .map(obj)
                 .map((p) => ({
-                  repo: str(obj(p.repository), 'nameWithOwner'),
+                  ...pullRequest(p),
                   number: num(p, 'number'),
                   title: str(p, 'title'),
                   url: str(p, 'url'),
@@ -181,7 +181,13 @@ export function readPull(path: string, input: { repo: string; number: number }) 
       if (pr.state === 'MERGED')
         return {
           merged: true as const,
-          row: { ...input, title: str(pr, 'title'), url: str(pr, 'url'), mergedAt: str(pr, 'mergedAt') },
+          row: {
+            ...pullRequest(pr),
+            ...input,
+            title: str(pr, 'title'),
+            url: str(pr, 'url'),
+            mergedAt: str(pr, 'mergedAt'),
+          },
         }
       if (pr.state === 'CLOSED') return { closed: true as const, merged: false as const }
       if (pr.state !== 'OPEN') throw Error('Pull request is no longer open.')

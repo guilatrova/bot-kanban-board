@@ -1,7 +1,7 @@
 import { botKey, isClosed, itemLane, itemLanes, type Computer, type PullRequest } from './model'
 import { isToday, type MergedPr } from './merge'
 import { stackOrder } from './stacks'
-import { mapPrs, repoMatch } from './map-prs'
+import { mapPrs, owners, repoMatch } from './map-prs'
 export type View = { name: string; bots: string[] | 'all'; repos: string[] | 'all'; needsMeOnly: boolean }
 export const allView: View = { name: '', bots: 'all', repos: 'all', needsMeOnly: false }
 export function selectedBots(filter: View['bots'], bots: { computer: string; name: string }[]) {
@@ -53,16 +53,39 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
     (p) =>
       acceptsRepo(p.repo) &&
       (!view.needsMeOnly || !p.draft) &&
-      (p.how === null || [...p.items, ...p.workspaces].some((m) => visible(m.computer, m.bot))),
+      ((p.how === null && selected.size !== 1) ||
+        [...p.items, ...p.workspaces].some((m) => visible(m.computer, m.bot))),
   )
+  const keys = (pr: Pick<(typeof allPrs)[number], 'items' | 'workspaces'>) =>
+    new Set([...pr.items, ...pr.workspaces].map((m) => botKey(m.computer, m.bot)))
+  const history = merged.map((pr) => ({ pr, keys: keys(owners(pr, items, workspaces)) }))
+  const active = allPrs.map(keys)
+  const roster = bots.map((b) => {
+    const key = botKey(b.computer, b.name)
+    const mine = items.filter((i) => i.computer === b.computer && i.bot === b.name)
+    const count = mine.filter((i) => !isClosed(i.status)).length
+    const cards = count + active.filter((set) => set.has(key)).length
+    return {
+      ...b,
+      count,
+      cards,
+      chip:
+        cards > 0 ||
+        mine.some((i) => isClosed(i.status) && isToday(new Date(i.updated))) ||
+        history.some((row) => row.keys.has(key) && isToday(new Date(row.pr.mergedAt))),
+    }
+  })
   return {
     columns,
     selected,
-    merged: merged.filter((pr) => !view.needsMeOnly && acceptsRepo(pr.repo)),
-    bots: bots.map((b) => ({
-      ...b,
-      count: items.filter((i) => !isClosed(i.status) && i.bot === b.name && i.computer === b.computer).length,
-    })),
+    merged: history
+      .filter(
+        ({ pr, keys }) =>
+          !view.needsMeOnly && acceptsRepo(pr.repo) && (selected.size !== 1 || [...keys].some((k) => selected.has(k))),
+      )
+      .map((row) => row.pr),
+    bots: roster,
+    chips: roster.filter((b) => b.chip),
     computers: computers
       .filter((c) => !c.source.ok || c.source.value.bots.length || c.warning)
       .map((c) => ({
@@ -82,7 +105,7 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
 export type Board = ReturnType<typeof buildBoard>
 
 export function toggleBot(selected: Set<string>, all: string[], key: string, solo: boolean) {
-  if (solo) return new Set([key])
+  if (solo) return selected.size === 1 && selected.has(key) ? new Set<string>() : new Set([key])
   const current = all.filter((id) => selected.has(id))
   const next = new Set(current.length ? current : all)
   if (next.has(key)) next.delete(key)

@@ -12,23 +12,33 @@ function mentions(text: string, ref: IssueRef, path: string) {
   }
   return false
 }
+export function owners(
+  pr: IssueRef & Partial<Pick<PullRequest, 'head' | 'closes' | 'body'>>,
+  items: Item[],
+  workspaces: Workspace[],
+) {
+  const branches = workspaces.filter((w) => w.branch === pr.head && repoMatch(w.repo, pr.repo))
+  const direct = items.filter((i) => mentions(i.text, pr, 'pull'))
+  const issues = [
+    ...(pr.closes ?? []),
+    ...Array.from((pr.body ?? '').matchAll(/(?<![\w./-])(?:([\w.-]+\/[\w.-]+))?#(\d+)\b/g), (m) => ({
+      repo: m[1] ?? pr.repo,
+      number: Number(m[2]),
+    })),
+  ]
+  const matches = direct.length ? direct : items.filter((i) => issues.some((r) => mentions(i.text, r, 'issues')))
+  return {
+    items: matches,
+    workspaces: branches,
+    how: direct.length
+      ? ('item' as const)
+      : matches.length
+        ? ('issue' as const)
+        : branches.length
+          ? ('branch' as const)
+          : null,
+  }
+}
 export function mapPrs(prs: PullRequest[], items: Item[], workspaces: Workspace[]): MappedPr[] {
-  return prs.map((pr) => {
-    const branches = workspaces.filter((w) => w.branch === pr.head && repoMatch(w.repo, pr.repo))
-    const direct = items.filter((i) => mentions(i.text, pr, 'pull'))
-    const issues = [
-      ...pr.closes,
-      ...Array.from(pr.body.matchAll(/(?<![\w./-])(?:([\w.-]+\/[\w.-]+))?#(\d+)\b/g), (m) => ({
-        repo: m[1] ?? pr.repo,
-        number: Number(m[2]),
-      })),
-    ]
-    const matches = direct.length ? direct : items.filter((i) => issues.some((r) => mentions(i.text, r, 'issues')))
-    return {
-      ...pr,
-      items: matches,
-      workspaces: branches,
-      how: direct.length ? 'item' : matches.length ? 'issue' : branches.length ? 'branch' : null,
-    }
-  })
+  return prs.map((pr) => ({ ...pr, ...owners(pr, items, workspaces) }))
 }

@@ -254,10 +254,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         : await mergePr(await path('ghPath'), pr, input, progress, ready)
       if (result.ok) {
         const row = {
-          repo: pr.repo,
-          number: pr.number,
-          title: pr.title,
-          url: pr.url,
+          ...pr,
           mergedAt: new Date().toISOString(),
         }
         recordMerged(row)

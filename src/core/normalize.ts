@@ -73,6 +73,7 @@ export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
         links = rows(i.links ?? []).map(obj)
       const dispatches = links
         .filter((l) => l.kind === 'dispatch')
+        .sort((a, b) => Number(a.settledAt ?? a.startedAt ?? 0) - Number(b.settledAt ?? b.startedAt ?? 0))
         .map(worker)
         .map((w) => {
           const active = live.find((a) => a.ref && a.ref === w.ref)
@@ -91,7 +92,7 @@ export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
           description: opt(i.description),
           done: opt(i.doneMeans),
           question: opt(q.text),
-          options: rows(q.options ?? []).map((o) =>
+          options: rows(q.options ?? rows(q.decisions ?? []).flatMap((d) => rows(obj(d).replies ?? []))).map((o) =>
             typeof o === 'string' ? o : str(obj(o), typeof obj(o).label === 'string' ? 'label' : 'text'),
           ),
           wait: opt(nested(i.wait).text),
@@ -101,7 +102,9 @@ export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
             i.description,
             i.doneMeans,
             q.text,
-            ...links.filter((l) => l.kind !== 'pr').map((l) => JSON.stringify(l)),
+            ...links
+              .filter((l) => l.kind !== 'pr')
+              .flatMap((l) => [l.name, l.title, l.url, l.ref, nested(l.report).subject, nested(l.report).body]),
           ].join(' '),
         },
       ]

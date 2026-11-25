@@ -28,6 +28,7 @@ export function activate(orca: OrcaWorkerApi) {
       data.computers = await computers(await path('orcaPath'))
       data.itemsAt = Date.now()
       publish()
+      data.focus = false
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
         .filter((i) => i.status === 'needs_you').length
@@ -71,6 +72,7 @@ export function activate(orca: OrcaWorkerApi) {
       bots.find((b) => b.name === input.bot)?.home ??
         workspaces.find((w) => w.bot === input.bot && w.home)?.home ??
         null,
+      input.offset,
     )
   })
   orca.panels.handle('board.jump', async (input) => jump(orca, data.computers, await path('orcaPath'), input))

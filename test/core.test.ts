@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import sample from './fixtures/board.json'
 import { bots, items, pullRequest } from '../src/core/normalize'
 import { mapPrs } from '../src/core/map-prs'
-import { buildBoard } from '../src/core/board'
+import { buildBoard, toggleBot } from '../src/core/board'
 import { botKey, type Bot, type Computer, type Workspace } from '../src/core/model'
 const bot: Bot = { ...sample.bot, computer: 'local', home: null }
 const item = items({ items: [sample.item] }, bot, [])[0]!
@@ -63,4 +63,55 @@ it('orders columns, counts bots across computers and applies filters', () => {
   expect(board.columns[0]?.items.map((i) => i.number)).toEqual([9, 7])
   expect(board.bots.map((b) => b.count)).toEqual([2, 2])
   expect(board.ready).toHaveLength(1)
+})
+
+it('solos, toggles, and restores all bots when the last is disabled', () => {
+  const all = ['one', 'two']
+  expect([...toggleBot(new Set(), all, 'one', false)]).toEqual(['two'])
+  expect([...toggleBot(new Set(['one']), all, 'two', true)]).toEqual(['two'])
+  expect([...toggleBot(new Set(['two']), all, 'two', false)]).toEqual([])
+})
+it('puts Planned first and Waiting in newest-change order', () => {
+  const board = buildBoard(
+    [
+      {
+        key: 'local',
+        name: 'Local',
+        source: {
+          ok: true,
+          value: {
+            bots: [bot],
+            workspaces: [],
+            items: [
+              { ...item, status: 'planned' },
+              { ...item, status: 'waiting' },
+              { ...item, status: 'waiting', number: 12, updated: 900 },
+            ],
+          },
+        },
+      },
+    ],
+    [],
+    [],
+  )
+  expect(board.columns.map((c) => c.status)).toEqual(['planned', 'needs_you', 'in_progress', 'waiting'])
+  expect(board.columns.at(-1)?.items.map((i) => i.number)).toEqual([12, 7])
+})
+it('reads decision replies and excludes structured PR link metadata from mapping', () => {
+  const [i] = items(
+    {
+      items: [
+        {
+          ...sample.item,
+          description: 'Field notes',
+          question: { text: 'Which?', decisions: [{ replies: [{ label: 'North' }] }] },
+          links: [{ kind: 'dispatch', title: 'Observe', pr: { title: 'orchard/sample#1' } }],
+        },
+      ],
+    },
+    bot,
+    [],
+  )
+  expect(i?.options).toEqual(['North'])
+  expect(i?.text).not.toContain('sample#1')
 })

@@ -56,6 +56,17 @@ export function external(label: string, url: string) {
   })
 }
 const pictures = new Map<string, Promise<string | null>>()
+async function loadAvatar(computer: string, bot: string) {
+  let offset = 0
+  const parts = ['data:image/png;base64,']
+  for (;;) {
+    const part = await orca.plugin.request('avatar.get', { computer, bot, offset })
+    if (!part) return null
+    parts.push(part.data)
+    if (part.next === null) return parts.join('')
+    offset = part.next
+  }
+}
 export function badge(computer: string, bot: string) {
   const span = el(
     'span',
@@ -71,7 +82,7 @@ export function badge(computer: string, bot: string) {
   if (computer === 'local') {
     let picture = pictures.get(bot)
     if (!picture) {
-      picture = orca.plugin.request('avatar.get', { computer, bot }).catch(() => null)
+      picture = loadAvatar(computer, bot).catch(() => null)
       pictures.set(bot, picture)
     }
     void picture.then((src) => {

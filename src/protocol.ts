@@ -13,7 +13,10 @@ declare module 'orca' {
   interface PluginRequests {
     'board.get': { input: undefined; output: null }
     'board.refresh': { input: undefined; output: null }
-    'avatar.get': { input: { computer: string; bot: string }; output: string | null }
+    'avatar.get': {
+      input: { computer: string; bot: string; offset: number }
+      output: { data: string; next: number | null } | null
+    }
     'pr.files': {
       input: { key: string; updated: string; offset: number }
       output: Source<{ data: string; end: boolean }>

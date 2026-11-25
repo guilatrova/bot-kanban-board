@@ -36,3 +36,12 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], filter: st
   }
 }
 export type Board = ReturnType<typeof buildBoard>
+
+export function toggleBot(selected: Set<string>, all: string[], key: string, solo: boolean) {
+  if (solo) return new Set([key])
+  const current = all.filter((id) => selected.has(id))
+  const next = new Set(current.length ? current : all)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  return next.size === all.length ? new Set<string>() : next
+}

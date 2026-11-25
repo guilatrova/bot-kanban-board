@@ -1,4 +1,4 @@
-import { buildBoard } from '../src/core/board'
+import { buildBoard, toggleBot } from '../src/core/board'
 import { botKey, itemKey, prKey, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
 import { el, button, age, labels, badge, prState } from './dom'
@@ -71,13 +71,7 @@ export function view(initial: string[]) {
           b.name + ' ' + b.count,
           async (e) => {
             const all = board.bots.map((b) => botKey(b.computer, b.name))
-            if (e.altKey || e.metaKey) selected = new Set([key])
-            else {
-              if (!selected.size) selected = new Set(all)
-              if (selected.has(key)) selected.delete(key)
-              else selected.add(key)
-              if (selected.size === all.length) selected.clear()
-            }
+            selected = toggleBot(selected, all, key, e.altKey || e.metaKey)
             if (snapshot) draw(snapshot)
             await orca.storage.set('filter', [...selected])
           },

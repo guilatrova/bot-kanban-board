@@ -3,10 +3,34 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <link rel="stylesheet" href="./styles.css" />
     <title>Bot Kanban Board</title>
   </head>
   <body>
+    <div
+      id="startup-error"
+      role="alert"
+      class="first-error"
+      hidden
+      style="padding: 1rem; background: var(--bg, #0e1013); color: var(--fg, #e7eaee); font-family: system-ui"
+    ></div>
+    <script>
+      const startupError = document.getElementById('startup-error')
+      function showStartupError(reason) {
+        startupError.textContent = 'Could not load the board. ' + String(reason)
+        startupError.hidden = false
+      }
+      window.addEventListener(
+        'error',
+        (event) => {
+          if (event instanceof ErrorEvent) showStartupError(event.message)
+          else if (event.target instanceof HTMLScriptElement || event.target instanceof HTMLLinkElement)
+            showStartupError('Failed to load ' + (event.target.src || event.target.href))
+        },
+        true,
+      )
+      window.addEventListener('unhandledrejection', (event) => showStartupError(event.reason))
+    </script>
+    <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./board.ts"></script>
   </body>
 </html>

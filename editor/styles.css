@@ -1,3 +1,6 @@
+[hidden] {
+  display: none !important;
+}
 :root {
   --dialog-shadow: 0 16px 60px #0005;
   --radius: var(--orca-radius);
@@ -470,7 +473,7 @@ select {
   border-radius: var(--radius);
 }
 .drag-item [data-key='planned'][hidden] {
-  display: block;
+  display: block !important;
 }
 .drag-item .lane:not([data-key='merged'], [data-key='prs']) {
   outline: 1px dashed var(--tone);

@@ -65,7 +65,7 @@ export function mergeToasts(
       detail.textContent = methodLabels[method] + ' · moved to Merged'
       toast.replaceChildren(mark, body)
       setTimeout(() => {
-        toast.classList.add('leaving')
+        toast.classList.add('fading')
         setTimeout(remove, 220)
       }, 3500)
       redraw()

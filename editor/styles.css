@@ -1194,6 +1194,7 @@ article:focus-within .bell,
   margin: 0;
 }
 article.merging {
+  animation: none;
   opacity: 0.55;
   pointer-events: none;
 }
@@ -1221,7 +1222,7 @@ article.merging {
   gap: 10px;
   padding: 11px 12px;
 }
-.toast.leaving {
+.toast.fading {
   opacity: 0;
   transform: translateY(6px);
 }

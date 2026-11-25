@@ -31,6 +31,11 @@ export function mergeQueue(
     merged = 0,
     active = '',
     timer: ReturnType<typeof setTimeout>
+  let finalStep: ((ok: boolean) => void) | undefined
+  orca.plugin.on('merge.progress', (event) => {
+    if (event.key === active && (event.state === 'failed' || (event.step === 'merge' && event.state === 'done')))
+      finalStep?.(event.state === 'done')
+  })
   function totals() {
     busy = false
     active = ''
@@ -61,7 +66,8 @@ export function mergeQueue(
     state('', 'queued', '')
     let approved: { method: MergeMethod; sha: string; facts: ConfirmedMerge } | undefined
     async function attempt(): Promise<'merged' | 'removed' | 'failed'> {
-      const current = await orca.plugin.request('pr.read', pr, { timeoutMs: 120000 })
+      const ref = { repo: pr.repo, number: pr.number }
+      const current = await orca.plugin.request('pr.read', ref, { timeoutMs: 120000 })
       if (current.merged || current.closed) return 'removed'
       const fresh = { ...pr, ...current.pr, behind: current.pr.behind }
       let method = approved?.method ?? prefs.mergeMethod
@@ -89,16 +95,20 @@ export function mergeQueue(
         approved = choice
         method = choice.method
       }
+      const completed = new Promise<boolean>((resolve) => {
+        finalStep = resolve
+      })
       const result = await orca.plugin.request(
         'pr.merge',
         { repo: pr.repo, number: pr.number, method, sha: fresh.sha ?? '', updated: fresh.updated },
         { timeoutMs: 120000 },
       )
-      if (result.ok) {
+      // Preflight rejections return directly; accepted requests post the final step before replying.
+      if (result.ok && (await completed)) {
         await land(fresh)
         return 'merged'
       }
-      const reread = await orca.plugin.request('pr.read', pr, { timeoutMs: 120000 })
+      const reread = await orca.plugin.request('pr.read', ref, { timeoutMs: 120000 })
       return reread.merged || reread.closed ? 'removed' : 'failed'
     }
     async function run(manual: boolean): Promise<MergeResult | undefined> {
@@ -107,13 +117,20 @@ export function mergeQueue(
       node.querySelector('button')?.remove()
       for (let i = 0; ; i++) {
         state('run', 'merging', '')
-        node.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        const bounds = node.getBoundingClientRect(),
+          viewport = body.getBoundingClientRect()
+        if (bounds.top < viewport.top) body.scrollTop += bounds.top - viewport.top
+        else if (bounds.bottom > viewport.bottom) body.scrollTop += bounds.bottom - viewport.bottom
         const result = await attempt().catch(() => 'failed' as const)
         if (result !== 'failed') {
           failed.delete(key)
           if (result === 'merged') {
             merged++
-            state('done', 'merged', '✓')
+            node.style.height = node.offsetHeight + 'px'
+            state('merged', 'merged', '✓')
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            node.classList.add('done')
+            node.style.height = '0px'
             await sleep(matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250)
           }
           node.remove()
@@ -162,6 +179,7 @@ export function mergeQueue(
       const batch = prs.filter((p) => !failed.has(prKey(p)))
       if (!batch.length) return
       clearTimeout(timer)
+      if (!failed.size) merged = 0
       busy = true
       changed()
       panel.classList.add('on')

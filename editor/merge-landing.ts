@@ -1,26 +1,30 @@
 import { type MergedPr } from '../src/core/merge'
 import { prKey } from '../src/core/model'
-import { el, age, external } from './dom'
+import { el, age, openExternal, notice } from './dom'
 import { icon } from './lanes'
 
 export function mergedRow(pr: MergedPr) {
   const node = el('div', '', 'merged-card'),
     meta = el('small'),
     url = 'https://github.com/' + pr.repo + '/pull/' + pr.number
-  const link = external(prKey(pr), url)
+  const link = el('a', prKey(pr))
+  link.href = url
+  link.onclick = (e) => {
+    e.preventDefault()
+    void openExternal(url).catch(notice)
+  }
   link.className = 'gh'
-  link.setAttribute('role', 'link')
   link.append(icon('M6 18 18 6M7 6h11v11'))
   meta.append(link, ' · ', el('time', age(pr.mergedAt)))
   node.append(meta, el('h3', pr.title), el('span', '✓', 'ck'))
   return node
 }
 export async function land(list: HTMLElement, card: HTMLElement | undefined, row: HTMLElement, commit: () => void) {
+  list.scrollTop = 0
   if (!card || !list.offsetWidth || matchMedia('(prefers-reduced-motion: reduce)').matches) {
     commit()
     return
   }
-  list.scrollTop = 0
   const css = getComputedStyle(list),
     width = list.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)
   const probe = row.cloneNode(true) as HTMLElement

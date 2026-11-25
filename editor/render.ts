@@ -43,23 +43,25 @@ export function view(
   const notify = mergeToasts(prefs, gear)
   let landing = false
   const landed = new Map<string, MergedPr>()
+  async function arrive(row: MergedPr) {
+    const key = prKey(row),
+      col = columns.get('merged')!,
+      node = mergedRow(row)
+    landing = true
+    await land(col.list, cards.get(key), node, () => {
+      landing = false
+      cards.set('merged:' + key, node)
+      cards.delete(key)
+      signatures.delete(key)
+      landed.set(key, row)
+      redraw()
+    })
+  }
   const queue = mergeQueue(
     prefs,
     confirm,
-    async (pr) => {
-      const key = prKey(pr),
-        col = columns.get('merged')!
-      const row = snapshot?.merged.find((p) => prKey(p) === key) ?? { ...pr, mergedAt: new Date().toISOString() }
-      const node = mergedRow(row)
-      landing = true
-      await land(col.list, cards.get(key), node, () => {
-        landing = false
-        cards.set('merged:' + key, node)
-        cards.delete(key)
-        landed.set(key, row)
-        redraw()
-      })
-    },
+    (pr) =>
+      arrive(snapshot?.merged.find((row) => prKey(row) === prKey(pr)) ?? { ...pr, mergedAt: new Date().toISOString() }),
     notify,
     redraw,
   )
@@ -106,6 +108,11 @@ export function view(
         cards.has(queue.active))
     )
       return
+    const backgroundRow = data.merged.find((row) => cards.has(prKey(row)))
+    if (backgroundRow && !queue.busy) {
+      void arrive(backgroundRow).catch(notice)
+      return
+    }
     for (const k of landed.keys()) if (data.merged.some((p) => prKey(p) === k)) landed.delete(k)
     if (landed.size)
       data = {

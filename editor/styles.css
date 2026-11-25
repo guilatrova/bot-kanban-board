@@ -1477,7 +1477,7 @@ article.gone {
   font-weight: 600;
 }
 
-/* ---------- drag deck (POINT 4) ---------- */
+/* Drag deck */
 .deck {
   position: fixed;
   left: 0;
@@ -1526,7 +1526,7 @@ article.gone {
 .deck.ready .badge {
   transform: scale(1);
 }
-/* ---------- queue (POINT 4) ---------- */
+/* Merge queue */
 .queue {
   flex: none;
   margin: 0 10px 8px;
@@ -1893,4 +1893,13 @@ article .check:focus-visible {
 .queue.on {
   opacity: 1;
   max-height: 320px;
+}
+
+.merged-card time {
+  display: inline;
+  color: inherit;
+  font: inherit;
+}
+.qrow.merged .ic {
+  color: var(--run);
 }

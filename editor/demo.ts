@@ -90,7 +90,16 @@ const fake = {
       return null
     },
   },
-  shell: { openExternal: (url: string) => ({ opened: Boolean(window.open(url, '_blank', 'noopener')) }) },
+  shell: {
+    openExternal: (url: string) => {
+      const tab = window.open('about:blank', '_blank')
+      if (tab) {
+        tab.opener = null
+        tab.location.replace(url)
+      }
+      return { opened: Boolean(tab) }
+    },
+  },
 }
 window.orca = {
   ...fake,

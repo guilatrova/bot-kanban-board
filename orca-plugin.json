@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "bot-kanban-board",
   "name": "Bot Kanban Board",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "guilatrova",
   "license": "MIT",
   "description": "See every Orca bot's open Items and pull requests on one board, answer what needs you, and merge in one click.",

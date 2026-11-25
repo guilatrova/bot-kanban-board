@@ -54,7 +54,7 @@ The trusted worker runs Node.js with your account’s access. Live mode invokes 
 - Merged history reads the first 40 GitHub search results sorted by update time. Merge queues require continuing on GitHub. After merging, tell the owning bot in Orca.
 
 - GitHub search reads up to five pages of 40 open pull requests. The board shows the open total. The PR files API returns up to 3,000 files. When fewer files arrive than the reported number of changes, the drawer shows both counts and a GitHub files link. Binary and large files can have no patch.
-- The worker reads remote avatars through a short-lived Orca terminal on the paired computer. It caches verified PNGs in plugin storage and checks for changes every ten minutes while the board is in use. Initials appear when a photo is unavailable.
+- A remote photo read briefly opens a terminal tab in the bot’s workspace on its paired computer. The worker checks the digest on the first photo request after startup and at most once every six hours afterward. A failed check keeps the last verified photo. Initials appear if no verified photo is available. Local photos are read directly from disk.
 - Orca opens a bot's workspace. Select the original chat there to answer. The bot deep link is a fallback when the folder workspace cannot be opened.
 - Desktop operation and paired-computer jumps still need an end-to-end run on a Mac. The CLI runner detects inherited bot-session context and directs the operator to open the board from the desktop as themselves.
 

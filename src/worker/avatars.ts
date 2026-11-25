@@ -1,23 +1,51 @@
-import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { StorageApi } from 'orca'
+import type { Computer } from '../core/model'
 import { obj, rows, str } from '../core/normalize'
 import { runCli } from './cli'
 
-const freshness = 10 * 60_000
+const freshness = 6 * 60 * 60_000
 const chunkSize = 72 * 1024
 const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex')
+
+const cacheKey = (computer: string, bot: string) => 'avatar-' + digest(JSON.stringify([computer, bot])).slice(0, 24)
+const validPng = (bytes: Buffer) => bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
+
+async function localAvatar(home: string, offset: number) {
+  try {
+    const file = await open(join(home, 'avatar.png'), 'r')
+    try {
+      const size = (await file.stat()).size
+      const length = Math.min(chunkSize, size - offset)
+      if (length <= 0) return null
+      const buffer = Buffer.alloc(length)
+      let read = 0
+      while (read < length) {
+        const { bytesRead } = await file.read(buffer, read, length - read, offset + read)
+        if (!bytesRead) return null
+        read += bytesRead
+      }
+      if (!offset && !validPng(buffer)) return null
+      return { data: buffer.toString('base64'), next: offset + length < size ? offset + length : null }
+    } finally {
+      await file.close()
+    }
+  } catch {
+    return null
+  }
+}
 
 // Orca terminal previews retain about 32 KiB. Request one 18 KiB block at a time.
 const transferSize = 18 * 1024
 const transfer =
-  "sh -c '" +
+  " exec bash -c '" +
   [
     'set -e',
     'hash=$(shasum -a 256 < avatar.png)',
     'echo BOARDHASH=${hash%% *}',
-    'while read -r n; do echo BOARDSTART=$n',
+    'while read -r -t 60 n; do echo BOARDSTART=$n',
     `dd if=avatar.png bs=${transferSize} skip="$n" count=1 2>/dev/null | base64 | tr -d "\\n" | fold -w 1024`,
     'printf "\\nBOARDDONE=%s\\n" "$n"',
     'done',
@@ -30,16 +58,9 @@ async function remoteImage(path: string, computer: string, home: string, previou
     if (!r.ok) throw Error(r.message)
     return obj(r.value)
   }
-  const created = await terminal([
-    'create',
-    '--worktree',
-    'path:' + home,
-    '--title',
-    'Board avatar',
-    '--command',
-    transfer,
-  ])
-  const handle = ['--terminal', str(obj(created.terminal), 'handle')]
+  const title = 'Board avatar ' + randomUUID()
+  const workspace = ['--worktree', 'path:' + home]
+  let handle: string[] = []
   async function until(marker: RegExp) {
     const deadline = Date.now() + 10_000
     do {
@@ -52,6 +73,8 @@ async function remoteImage(path: string, computer: string, home: string, previou
     throw Error('Avatar transfer timed out')
   }
   try {
+    const created = await terminal(['create', ...workspace, '--title', title, '--command', transfer])
+    handle = ['--terminal', str(obj(created.terminal), 'handle')]
     const hash = (await until(/^BOARDHASH=[a-f0-9]{64}$/)).at(-1)!.slice(10)
     if (hash === previous) return { hash, bytes: null }
     const blocks: Buffer[] = []
@@ -68,13 +91,20 @@ async function remoteImage(path: string, computer: string, home: string, previou
     if (digest(bytes) !== hash) throw Error('Avatar changed during transfer')
     return { hash, bytes }
   } finally {
-    await terminal(['close', ...handle])
+    if (!handle.length) {
+      const list = await terminal(['list', ...workspace, '--limit', '1000'])
+      const owned = rows(list.terminals)
+        .map(obj)
+        .find((t) => t.title === title && typeof t.handle === 'string')
+      if (owned) handle = ['--terminal', str(owned, 'handle')]
+    }
+    if (handle.length) await terminal(['close', ...handle])
   }
 }
 
 export function avatars(storage: StorageApi) {
   const jobs = new Map<string, { time: number; picture: Promise<Buffer | null> }>()
-  async function load(key: string, computer: string, home: string, path: string) {
+  async function load(key: string, computer: string, home: string | null, path: string, memory: Buffer | null) {
     const meta = await storage.get(key)
     const record = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {}
     const previous = typeof record.hash === 'string' ? record.hash : null
@@ -85,14 +115,14 @@ export function avatars(storage: StorageApi) {
       const bytes = Buffer.from(chunks.join(''), 'base64')
       return digest(bytes) === previous ? bytes : null
     }
-    const existing = await cached()
-    if (existing && typeof record.time === 'number' && Date.now() - record.time < freshness) return existing
-    const local = computer === 'local' ? await readFile(join(home, 'avatar.png')) : null
-    const { hash, bytes } = local
-      ? { hash: digest(local), bytes: local }
-      : await remoteImage(path, computer, home, existing ? previous : null)
+    const existing = memory ?? (await cached())
+    if (!home) return existing
+    const verified = existing ? digest(existing) : null
+    const result = await remoteImage(path, computer, home, verified).catch(() => null)
+    if (!result) return existing
+    const { hash, bytes } = result
     const image = bytes ?? existing
-    if (!image || image.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') return null
+    if (!image || !validPng(image)) return existing
     const count = Math.ceil(image.length / chunkSize)
     const written: string[] = []
     try {
@@ -103,7 +133,7 @@ export function avatars(storage: StorageApi) {
           written.push(part)
         }
       }
-      await storage.set(key, { hash, count, time: Date.now() })
+      await storage.set(key, { hash, count, computer })
     } catch {
       await Promise.allSettled(written.map((part) => storage.delete(part)))
       // An image that exceeds the shared storage quota remains usable in memory.
@@ -113,12 +143,17 @@ export function avatars(storage: StorageApi) {
       for (let i = 0; i < record.count; i++) await storage.delete(key + previous + i)
     return image
   }
-  return async (computer: string, bot: string, home: string | null, offset: number, path: string) => {
-    if (!home || !Number.isSafeInteger(offset) || offset < 0 || offset % chunkSize) return null
-    const key = 'avatar-' + digest(JSON.stringify([computer, bot])).slice(0, 24)
+  async function get(computer: string, bot: string, home: string | null, offset: number, path: string) {
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset % chunkSize) return null
+    if (computer === 'local') return home ? localAvatar(home, offset) : null
+    const key = cacheKey(computer, bot)
     let job = jobs.get(key)
     if (!job || (!offset && Date.now() - job.time >= freshness)) {
-      job = { time: Date.now(), picture: load(key, computer, home, path).catch(() => null) }
+      const last = job?.picture ?? Promise.resolve(null)
+      job = {
+        time: Date.now(),
+        picture: last.then((image) => load(key, computer, home, path, image).catch(() => image)),
+      }
       jobs.set(key, job)
     }
     const bytes = await job.picture
@@ -126,4 +161,45 @@ export function avatars(storage: StorageApi) {
     const end = Math.min(bytes.length, offset + chunkSize)
     return { data: bytes.subarray(offset, end).toString('base64'), next: end < bytes.length ? end : null }
   }
+  let lastRoster = ''
+  async function prune(computers: Computer[]) {
+    const live = new Set<string>(),
+      known = new Set<string>()
+    let complete = true
+    for (const c of computers) {
+      if (!c.source.ok || c.key === 'discovery') {
+        complete = false
+        continue
+      }
+      known.add(c.key)
+      if (c.key !== 'local') for (const b of c.source.value.bots) live.add(cacheKey(c.key, b.name))
+    }
+    const roster = JSON.stringify([complete, [...known].sort(), [...live].sort()])
+    if (roster === lastRoster) return
+    const keys = await storage.keys()
+    const groups = new Map<string, string[]>()
+    for (const key of [...keys, ...jobs.keys()]) {
+      const base = key.match(/^avatar-[a-f0-9]{24}/)?.[0]
+      if (!base || live.has(base)) continue
+      const group = groups.get(base) ?? []
+      group.push(key)
+      groups.set(base, group)
+    }
+    for (const [base, group] of groups) {
+      if (!complete) {
+        const m = await storage.get(base)
+        if (!m || typeof m !== 'object' || Array.isArray(m) || typeof m.computer !== 'string' || !known.has(m.computer))
+          continue
+      }
+      const job = jobs.get(base)
+      if (job) {
+        await job.picture
+        jobs.delete(base)
+      }
+      const stale = job ? (await storage.keys()).filter((k) => k.startsWith(base)) : group
+      for (const key of stale) await storage.delete(key)
+    }
+    lastRoster = roster
+  }
+  return { get, prune }
 }

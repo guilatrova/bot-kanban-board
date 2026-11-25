@@ -29,6 +29,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   const landed = new Map<string, MergedPr>()
   const merging = new Set<string>()
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
+  const avatar = avatars(orca.storage)
   const fileCache = new Map<string, string>()
   function publish(panel?: string) {
     const json = JSON.stringify({ ...data, focus: Boolean(panel) && data.focus }),
@@ -64,6 +65,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       })
       data.itemsAt = Date.now()
       publish()
+      await avatar.prune(data.computers)
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
         .filter((i) => i.status === 'needs_you').length
@@ -115,18 +117,17 @@ export default async function activate(orca: OrcaWorkerApi) {
     else await refresh()
     return null
   })
-  const avatar = avatars(orca.storage)
   orca.panels.handle('avatar.get', async (input) => {
     if (demo) return null
     const c = data.computers.find((c) => input.computer === c.key)
     if (!c?.source.ok) return null
     const { bots, workspaces } = c.source.value
-    return avatar(
+    const bot = bots.find((b) => b.name === input.bot)
+    if (!bot) return null
+    return avatar.get(
       c.key,
       input.bot,
-      bots.find((b) => b.name === input.bot)?.home ??
-        workspaces.find((w) => w.bot === input.bot && w.home)?.home ??
-        null,
+      bot.home ?? workspaces.find((w) => w.bot === input.bot && w.home)?.home ?? null,
       input.offset,
       await path('orcaPath'),
     )

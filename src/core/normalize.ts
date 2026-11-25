@@ -49,6 +49,10 @@ export function botOwners(rosters: { key: string; bots: RosterBot[] }[]) {
     for (const bot of roster.bots) {
       if (!bot.server && (!owners.has(bot.id) || owners.get(bot.id) === 'local')) owners.set(bot.id, roster.key)
     }
+  for (const roster of rosters)
+    for (const bot of roster.bots) {
+      if (bot.server && (!owners.has(bot.id) || owners.get(bot.id) === 'local')) owners.set(bot.id, bot.computer)
+    }
   return owners
 }
 
@@ -61,8 +65,7 @@ export function unpairedComputers(
   for (const bot of roster) {
     const server = bot.server
     if (!server || saved.some((e) => e.key === server.on || e.name === server.on)) continue
-    if (owners.has(bot.id) && owners.get(bot.id) !== 'local') continue
-    owners.set(bot.id, bot.computer)
+    if (owners.get(bot.id) !== bot.computer) continue
     const group = groups.get(bot.computer) ?? { name: server.name, bots: new Map<string, Bot>() }
     group.bots.set(bot.id, bot)
     groups.set(bot.computer, group)

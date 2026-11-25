@@ -50,7 +50,7 @@ describe('normalize', () => {
   it('shows a federated bot once under its unpaired server with a named warning', () => {
     const bot = { id: 'clio', name: 'Clio', server: { name: 'Field station', on: 'field-id' } }
     const roster = bots({ bots: [bot, bot] }, 'local')
-    const computers = unpairedComputers(roster, [], new Map())
+    const computers = unpairedComputers(roster, [], botOwners([{ key: 'local', bots: roster }]))
     const board = buildBoard(computers, [], allView)
     expect(board.bots.map((b) => [b.name, b.computer])).toEqual([['Clio', 'federated:field-id']])
     expect(board.computers[0]?.warning?.message).toContain('Field station')

@@ -1,4 +1,6 @@
 import { items, bots, pullRequest } from './core/normalize'
+import { prKey, type PullRequest, type Source } from './core/model'
+import type { Progress } from './protocol'
 import type { Snapshot } from './protocol'
 export function demoBoard(state: string | null = null) {
   const list = bots(
@@ -196,4 +198,22 @@ export function demoBoard(state: string | null = null) {
     }
   }
   return data
+}
+
+export async function demoMerge(
+  pr: PullRequest,
+  progress: (event: Progress) => void,
+  onReady: () => void,
+  fail: boolean,
+): Promise<Source<null>> {
+  const key = prKey(pr)
+  for (const step of pr.draft ? (['ready', 'merge'] as const) : (['merge'] as const)) {
+    progress({ key, step, state: 'running' })
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    if (step === 'merge' && fail)
+      return { ok: false, command: 'Demo', message: 'Required status check "field survey" is pending.', next: '' }
+    if (step === 'ready') onReady()
+    progress({ key, step, state: 'done' })
+  }
+  return { ok: true, value: null }
 }

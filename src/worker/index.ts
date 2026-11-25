@@ -1,5 +1,5 @@
 import type { OrcaWorkerApi } from 'orca/worker'
-import type { Snapshot } from '../protocol'
+import type { Snapshot, Progress } from '../protocol'
 import { prKey } from '../core/model'
 import { computers } from './sources/orca'
 import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
@@ -10,7 +10,7 @@ import { openBoard } from './board-file'
 import { avatars } from './avatars'
 import { notifications } from './bells'
 import { jump } from './jump'
-import { demoBoard } from '../demo'
+import { demoBoard, demoMerge } from '../demo'
 import { parseActions, moveState } from '../core/actions'
 export default async function activate(orca: OrcaWorkerApi) {
   const demo = (await orca.settings.get('demo')) === true
@@ -30,7 +30,8 @@ export default async function activate(orca: OrcaWorkerApi) {
         focus: false,
       }
   const landed = new Map<string, MergedPr>()
-  const merging = new Set<string>()
+  const closingPrs = new Set<string>()
+  const busy = (key: string) => closingPrs.has(key) || data.running?.includes(key)
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
   const avatar = avatars(orca.storage)
   const fileCache = new Map<string, string>()
@@ -168,14 +169,14 @@ export default async function activate(orca: OrcaWorkerApi) {
   orca.panels.handle('pr.close', async (input) => {
     const key = prKey(input)
     const pr = data.prs.find((p) => prKey(p) === key)
-    if (demo || !pr || merging.has(key) || data.error)
+    if (demo || !pr || busy(key) || data.error)
       return {
         ok: false as const,
         command: 'Close PR',
         message: demo ? 'Demo data is read-only.' : 'Pull request unavailable.',
         next: 'Refresh the board.',
       }
-    merging.add(key)
+    closingPrs.add(key)
     try {
       const result = await closePr(await path('ghPath'), pr)
       if (result.ok) {
@@ -185,21 +186,14 @@ export default async function activate(orca: OrcaWorkerApi) {
       }
       return result
     } finally {
-      merging.delete(key)
+      closingPrs.delete(key)
       void (async () => {
         await prJob
         await refreshPrs()
       })().catch(report)
     }
   })
-  orca.panels.handle('pr.merge', async (input, context) => {
-    if (demo)
-      return {
-        ok: false as const,
-        command: 'Demo',
-        message: 'Demo data is read-only.',
-        next: 'Close the confirmation.',
-      }
+  orca.panels.handle('pr.merge', async (input) => {
     const key = prKey(input),
       pr = data.prs.find((p) => prKey(p) === key),
       repo = data.repos[input.repo]
@@ -210,7 +204,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       input.sha !== pr.sha ||
       !repo?.ok ||
       data.error ||
-      merging.has(key)
+      busy(key)
     )
       return {
         ok: false as const,
@@ -226,20 +220,17 @@ export default async function activate(orca: OrcaWorkerApi) {
         message: assessment.blockers.join(' ') || 'Method unavailable.',
         next: 'Refresh and check the repository settings.',
       }
-    merging.add(key)
     data.running = [...(data.running ?? []), key]
     publish()
     try {
-      const result = await mergePr(
-        await path('ghPath'),
-        pr,
-        input,
-        (e) => orca.panels.post('merge.progress', e, { panel: context.panel.id }),
-        () => {
-          pr.draft = false
-          publish()
-        },
-      )
+      const progress = (e: Progress) => orca.panels.post('merge.progress', e)
+      const ready = () => {
+        pr.draft = false
+        publish()
+      }
+      const result = demo
+        ? await demoMerge(pr, progress, ready, false)
+        : await mergePr(await path('ghPath'), pr, input, progress, ready)
       if (result.ok) {
         const row = {
           repo: pr.repo,
@@ -259,11 +250,11 @@ export default async function activate(orca: OrcaWorkerApi) {
     } finally {
       data.running = data.running?.filter((k) => k !== key)
       publish()
-      merging.delete(key)
-      void (async () => {
-        await prJob
-        await refreshPrs()
-      })().catch(report)
+      if (!demo)
+        void (async () => {
+          await prJob
+          await refreshPrs()
+        })().catch(report)
     }
   })
   orca.panels.handle('pr.files', async (input) => {

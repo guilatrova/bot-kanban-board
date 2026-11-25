@@ -3,13 +3,13 @@ import { botKey, type Workspace } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
 import { el, button, age, badge, describeFailure } from './dom'
 import { views, type readViews } from './views'
-import { settings } from './settings'
 import { popover } from './popover'
 import { icon } from './lanes'
 export function boardHeader(
   saved: Awaited<ReturnType<typeof readViews>>,
   update: () => void,
   snoozed: HTMLButtonElement,
+  gear: HTMLButtonElement,
 ) {
   const controls = views(saved, update)
   const demo = el('mark', 'Demo data')
@@ -47,7 +47,7 @@ export function boardHeader(
   const brand = el('h1', 'Bot Kanban Board', 'brand')
   brand.prepend(icon('M2 2h3.6v12H2zM6.7 2h3.6v8H6.7zM11.4 2H15v5h-3.6z', 16))
   const tools = el('div', '', 'header-tools')
-  tools.append(updated, filter, settings(saved, update))
+  tools.append(updated, filter, gear)
   header.append(brand, demo, el('span', '', 'sep'), filters, unreachable, tools)
   document.body.append(header, message, lanes)
 

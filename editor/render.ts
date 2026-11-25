@@ -1,6 +1,7 @@
 import { mergeToasts } from './merge-toasts'
-import { cleanMerge } from '../src/core/merge'
-import { checksLabel, countLabel } from './pr-labels'
+import { settings, type readMergeSettings } from './settings'
+import { canMergeWithoutDialog, checksLabel } from '../src/core/merge'
+import { countLabel } from './pr-labels'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
@@ -16,6 +17,7 @@ import { type readViews } from './views'
 import { itemActions, type readActions } from './item-actions'
 export function view(
   saved: Awaited<ReturnType<typeof readViews>>,
+  { prefs, save }: Awaited<ReturnType<typeof readMergeSettings>>,
   store: Awaited<ReturnType<typeof readActions>>,
   collapsed: Set<string>,
 ) {
@@ -30,14 +32,18 @@ export function view(
   const actions = itemActions(store, redraw)
   let sleeping: Item[] = []
   const snoozed = button('Snoozed 0', () => actions.showList(sleeping), 'chip')
-  const header = boardHeader(saved, update, snoozed)
+  const header = boardHeader(saved, update, snoozed, settings(prefs, save))
   const { lanes } = header
-  const confirm = mergeDialog(saved, update, (pr, method) => void merges.start(pr, method))
-  const merges = mergeToasts(saved, redraw, (pr, facts) => confirm(pr, facts))
+  const confirm = mergeDialog(
+    prefs,
+    save,
+    (pr, method, warnings) => void merges.start(pr, method, { warnings, mergeable: pr.mergeable, behind: pr.behind }),
+  )
+  const merges = mergeToasts(redraw, (pr, facts) => confirm(pr, facts))
   const openMerge = (pr: MappedPr) => {
     const facts = snapshot?.error || snapshot?.repos[pr.repo]
-    if (!saved.askBeforeMerging && facts?.ok && cleanMerge(pr, facts.value, saved.mergeMethod))
-      void merges.start(pr, saved.mergeMethod)
+    if (!prefs.askBeforeMerging && facts?.ok && canMergeWithoutDialog(pr, facts.value, prefs.mergeMethod))
+      void merges.start(pr, prefs.mergeMethod)
     else confirm(pr, facts)
   }
   const drawer = drawers(openMerge, actions.selector)

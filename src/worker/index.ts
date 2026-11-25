@@ -3,9 +3,8 @@ import type { Snapshot, Progress } from '../protocol'
 import { prKey } from '../core/model'
 import { computers } from './sources/orca'
 import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
-import { github, files, mergePr, closePr } from './sources/github'
+import { github, files, mergePr, closePr, readPull } from './sources/github'
 import { stackOrder } from '../core/stacks'
-import { readPull } from './sources/github'
 import { openBoard } from './board-file'
 import { avatars } from './avatars'
 import { notifications } from './bells'
@@ -131,8 +130,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     const id = context.panel.id
     if (index === 0) {
       if (fresh && !demo) await refresh()
-      snapshots.set(id, JSON.stringify(data))
-      data.focus = false
+      snapshots.set(id, JSON.stringify({ ...data, focus: fresh === true }))
     }
     const json = snapshots.get(id)
     if (!json) throw Error('Snapshot expired. Refresh the board.')
@@ -286,7 +284,6 @@ export default async function activate(orca: OrcaWorkerApi) {
   })
   for (const id of ['bot-kanban-board.needs-you', 'bot-kanban-board.open'])
     orca.commands.register(id, async () => {
-      data.focus = true
       try {
         await openBoard(orca, demo ? null : await path('orcaPath'))
         orca.panels.post('board.focus', null)

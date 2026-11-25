@@ -2,8 +2,7 @@ import { allView, selectedBots, type View } from '../src/core/board'
 import { button } from './dom'
 import { panel, ask } from './controls'
 
-import { mergeMethods, type MergePreferences } from '../src/core/merge'
-export type Saved = MergePreferences & { version: 1; current: View; views: View[] }
+type Saved = { version: 1; current: View; views: View[] }
 export function views(saved: Saved, update: () => void) {
   const trigger = button('', () => {
     const dialog = panel('Views')
@@ -85,15 +84,7 @@ export async function readViews(
   roster: () => Promise<{ name: string; computer: string }[]>,
 ): Promise<Saved> {
   const state = await orca.storage.get(demo ? 'demo-views' : 'views')
-  const defaults: MergePreferences = { mergeMethod: 'squash', askBeforeMerging: true }
-  if (state && typeof state === 'object' && 'version' in state && state.version === 1) {
-    const stored = state as Saved
-    return {
-      ...stored,
-      mergeMethod: mergeMethods.includes(stored.mergeMethod) ? stored.mergeMethod : defaults.mergeMethod,
-      askBeforeMerging: stored.askBeforeMerging !== false,
-    }
-  }
+  if (state && typeof state === 'object' && 'version' in state && state.version === 1) return state as Saved
   const old = demo ? null : await orca.storage.get('filter')
   const migrated =
     Array.isArray(old) && old.length
@@ -105,7 +96,6 @@ export async function readViews(
         ]
       : []
   return {
-    ...defaults,
     version: 1,
     views: [],
     current: {

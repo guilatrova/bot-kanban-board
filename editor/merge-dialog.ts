@@ -1,5 +1,7 @@
-import { checksLabel, mergeableLabel } from './pr-labels'
 import {
+  checksLabel,
+  mergeableLabel,
+  type Warning,
   methodLabels,
   type MergePreferences,
   assessMerge,
@@ -12,7 +14,7 @@ import { el, button, describeFailure, notice } from './dom'
 export function mergeDialog(
   saved: MergePreferences,
   update: () => void,
-  start: (pr: MappedPr, method: MergeMethod) => void,
+  start: (pr: MappedPr, method: MergeMethod, warnings: Warning[]) => void,
 ) {
   const modal = el('dialog', '', 'merge-dialog')
   modal.setAttribute('aria-label', 'Confirm pull request merge')
@@ -81,14 +83,7 @@ export function mergeDialog(
         [mergeableLabel(pr.mergeable), checksLabel(pr.checks), '+' + pr.additions + ' −' + pr.deletions].join(' · '),
       ),
     )
-    for (const w of assessment.warnings)
-      summary.append(
-        el(
-          'p',
-          w.checks ? checksLabel(w.checks) + '. Review the checks on GitHub.' : w.text,
-          w.danger ? 'warning danger' : 'warning',
-        ),
-      )
+    for (const w of assessment.warnings) summary.append(el('p', w.text, w.danger ? 'warning danger' : 'warning'))
     for (const blocker of assessment.blockers) summary.append(el('p', blocker, 'warning'))
     if (!assessment.canMerge) return
     const select = el('select'),
@@ -123,7 +118,7 @@ export function mergeDialog(
             saved.askBeforeMerging = false
             update()
           }
-          start(pr, select.value as MergeMethod)
+          start(pr, select.value as MergeMethod, assessment.warnings)
         },
         assessment.warnings.some((w) => w.danger) ? 'confirm danger' : 'confirm',
       ),

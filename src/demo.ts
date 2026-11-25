@@ -1,7 +1,6 @@
 import { items, bots, pullRequest } from './core/normalize'
 import { prKey, type PullRequest, type Source } from './core/model'
-import type { Progress } from './protocol'
-import type { Snapshot } from './protocol'
+import type { Progress, Snapshot } from './protocol'
 export function demoBoard(state: string | null = null) {
   const list = bots(
     {

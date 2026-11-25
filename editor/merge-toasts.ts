@@ -1,8 +1,8 @@
 import {
-  cleanMerge,
+  canMergeWithoutDialog,
   methodLabels,
   type MergeMethod,
-  type MergePreferences,
+  type ConfirmedMerge,
   type RepositoryFacts,
 } from '../src/core/merge'
 import { prKey, type MappedPr, type Source } from '../src/core/model'
@@ -21,11 +21,7 @@ function reason(message: string) {
     return 'The pull request or repository settings changed. Retry to read them again.'
   return uncertain
 }
-export function mergeToasts(
-  saved: MergePreferences,
-  redraw: () => void,
-  review: (pr: MappedPr, facts: Source<RepositoryFacts>) => void,
-) {
+export function mergeToasts(redraw: () => void, review: (pr: MappedPr, facts: Source<RepositoryFacts>) => void) {
   const stack = el('div', '', 'toasts')
   stack.setAttribute('aria-live', 'polite')
   document.body.append(stack)
@@ -38,7 +34,7 @@ export function mergeToasts(
   function running(key: string) {
     return entries.get(key)?.dataset.state === 'running'
   }
-  async function start(pr: MappedPr, method: MergeMethod) {
+  async function start(pr: MappedPr, method: MergeMethod, confirmed?: ConfirmedMerge) {
     const key = prKey(pr)
     if (running(key) || !pr.sha) return
     const toast = entries.get(key) ?? el('div', '', 'toast')
@@ -95,14 +91,13 @@ export function mergeToasts(
             if (
               fresh.sha !== pr.sha ||
               !current.facts.ok ||
-              !cleanMerge(fresh, current.facts.value, saved.mergeMethod) ||
-              !current.facts.value.methods.includes(method)
+              !canMergeWithoutDialog(fresh, current.facts.value, method, confirmed)
             ) {
               remove()
               review(fresh, current.facts)
               return
             }
-            await start(fresh, method)
+            await start(fresh, method, confirmed)
           } catch {
             detail.textContent = uncertain
           } finally {

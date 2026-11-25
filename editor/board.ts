@@ -1,3 +1,4 @@
+import { readMergeSettings } from './settings'
 import { readViews } from './views'
 import { readActions } from './item-actions'
 import { view } from './render'
@@ -23,12 +24,14 @@ async function start() {
     latest = data
     board ??= Promise.all([
       readViews(Boolean(data.demo), roster),
+      readMergeSettings(Boolean(data.demo)),
       readActions(Boolean(data.demo)),
       orca.storage.get('collapsed'),
-    ]).then(([saved, actions, collapsed]) => {
+    ]).then(([saved, mergeSettings, actions, collapsed]) => {
       loading.remove()
       return view(
         saved,
+        mergeSettings,
         actions,
         new Set<string>(
           Array.isArray(collapsed)

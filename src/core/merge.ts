@@ -7,6 +7,7 @@ export type MergePreferences = {
   mergeMethod: MergeMethod
   botName: string
   computer: string
+  compact: boolean
   tellBot: boolean
   askBeforeMerging: boolean
 }

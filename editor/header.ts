@@ -92,8 +92,10 @@ export function boardHeader(
       const warnings = board.bots.flatMap((b) =>
         b.warning && !b.count ? [b.name + ' · ' + describeFailure(b.warning)] : [],
       )
-      message.textContent =
-        data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error && !c.warning)
+      const failure = data.error ?? data.mergedError
+      message.textContent = failure
+        ? failure.message
+        : data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error && !c.warning)
           ? 'No bots yet. Open Items will appear here when a bot creates one.'
           : warnings.join(' · ')
     },

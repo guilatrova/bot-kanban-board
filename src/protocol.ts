@@ -29,7 +29,7 @@ export interface Snapshot {
   prs: PullRequest[]
   repos: Record<string, Source<RepositoryFacts>>
   merged: MergedPr[]
-  mergedError: Failure | null
+  banner: string | null
   total: number
   itemsAt: number
   prsAt: number

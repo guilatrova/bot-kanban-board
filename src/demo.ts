@@ -119,7 +119,7 @@ export function demoBoard(state: string | null = null) {
       },
     },
     merged: [],
-    mergedError: null,
+    banner: null,
     total: 2,
     prsAt: Date.now(),
     itemsAt: Date.now(),
@@ -251,6 +251,7 @@ export function demoBoard(state: string | null = null) {
     data.prs = []
     data.prsAt = 0
     data.total = 0
+    data.banner = 'GitHub is signed out. Run gh auth login and refresh.'
     data.error = {
       ok: false,
       command: 'gh api user',

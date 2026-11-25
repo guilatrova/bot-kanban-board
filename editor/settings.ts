@@ -1,5 +1,5 @@
 import { version } from '../package.json'
-import { mergeMethods, methodLabels, type MergePreferences } from '../src/core/merge'
+import { mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
 import { botKey, type Computer } from '../src/core/model'
 import { badge, button, el, external, notice } from './dom'
 import { icon } from './lanes'
@@ -92,7 +92,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
         }
       }
       for (const m of mergeMethods) {
-        const b = button(m === 'merge' ? 'Merge' : methodLabels[m], () => {
+        const b = button(shortMethodLabels[m], () => {
           saved.mergeMethod = m
           syncMethod()
           update()

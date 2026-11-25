@@ -27,6 +27,8 @@
   --row-hover: #ffffff08;
   --control: #0e1013;
   --picker: var(--raise);
+  --switch-knob: #fff;
+  --switch-shadow: 0 1px 3px #0006;
   --switch-off: #3a414c;
   --draft-tag: #ffffff0f;
   --area-fill: #c58af01a;
@@ -1101,6 +1103,7 @@ article:focus-within .bell,
 }
 
 .menu.settings {
+  padding: 0;
   position: fixed;
   max-height: calc(100vh - 112px);
   overflow-y: auto;
@@ -1254,8 +1257,8 @@ article:focus-within .bell,
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px #0006;
+  background: var(--switch-knob);
+  box-shadow: var(--switch-shadow);
   transition: transform 0.22s var(--spring);
 }
 .sw:checked {
@@ -1298,11 +1301,6 @@ article:focus-within .bell,
   transition:
     opacity 0.15s,
     transform 0.18s var(--spring);
-}
-.bpl.on {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
 }
 .bpo {
   display: flex;
@@ -1353,9 +1351,6 @@ article:focus-within .bell,
   text-decoration: underline;
 }
 
-.menu.settings {
-  padding: 0;
-}
 .menu.settings button {
   width: auto;
   min-height: 0;

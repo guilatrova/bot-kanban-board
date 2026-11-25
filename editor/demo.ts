@@ -30,7 +30,8 @@ const fake = {
           data: JSON.stringify({
             ...data,
             prsAt: 0,
-            error: { ok: false, message: 'Can’t reach GitHub (HTTP 502). Trying again in 90 seconds.' },
+            banner: 'Can’t reach GitHub (HTTP 502). Trying again in 90 seconds.',
+            error: { ok: false, message: 'HTTP 502', next: '', command: 'gh api' },
           }),
         }
       }

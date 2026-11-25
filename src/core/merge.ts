@@ -3,6 +3,7 @@ import type { PullRequest, IssueRef } from './model'
 export const mergeMethods = ['squash', 'merge', 'rebase'] as const
 export type MergeMethod = (typeof mergeMethods)[number]
 export const methodLabels = { squash: 'Squash', merge: 'Merge commit', rebase: 'Rebase' }
+export const shortMethodLabels = { ...methodLabels, merge: 'Merge' }
 export type MergePreferences = {
   mergeMethod: MergeMethod
   botName: string

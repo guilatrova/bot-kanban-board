@@ -24,7 +24,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         prs: [],
         repos: {},
         merged: [],
-        mergedError: null,
+        banner: null,
         total: 0,
         itemsAt: 0,
         prsAt: 0,
@@ -116,7 +116,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       timer = setTimeout(() => void refreshPrs().catch(report), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
   }
   function refreshPrs() {
-    if (limitedUntil > Date.now()) return Promise.resolve()
+    if (limitedUntil > Date.now()) return planPoll()
 
     return (prJob ??= (async () => {
       const result = await github(await path('ghPath'))
@@ -125,7 +125,6 @@ export default async function activate(orca: OrcaWorkerApi) {
         data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
         data.repos = result.value.repos
         const merged = result.value.merged
-        data.mergedError = merged.ok ? null : merged
         const history = merged.ok ? merged.value : data.merged
         data.merged = mergedToday([...landed.values(), ...history.filter((pr) => !landed.has(prKey(pr)))])
         data.total = result.value.total
@@ -135,13 +134,14 @@ export default async function activate(orca: OrcaWorkerApi) {
         const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
         for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
       } else data.error = result
-      const failure = data.error ?? data.mergedError ?? Object.values(data.repos).find((r) => !r.ok)
-      if (failure && !failure.ok) {
-        const next = retry(failure, ++failures, Date.now())
+      const search = result.ok ? result.value.merged : result
+      if (!search.ok) {
+        const next = retry(search, ++failures, Date.now())
         retryAt = next.at
         limitedUntil = next.limited ? retryAt : 0
-        data.error = { ...failure, message: next.message, next: '' }
+        data.banner = next.message
       } else {
+        data.banner = null
         failures = 0
         retryAt = 0
         limitedUntil = 0

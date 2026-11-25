@@ -1,3 +1,4 @@
+import { backoffDelay, retryLabel } from '../src/core/backoff'
 import { skeleton } from './loading'
 import { readMergeSettings } from './settings'
 import { readViews } from './views'
@@ -34,7 +35,7 @@ async function start() {
     const data = JSON.parse(chunks.join('')) as Snapshot
     latest = data
     if (!board && !data.prsAt) {
-      if (data.error) showError(data.error.message)
+      if (data.banner) showError(data.banner)
       return
     }
     board ??= Promise.all([
@@ -85,12 +86,8 @@ async function start() {
     } catch (error) {
       if (board) notice(error)
       else {
-        const delay = Math.min(360000, 90000 * 2 ** Math.min(2, readFailures++))
-        showError(
-          'Could not read the board. Trying again in ' +
-            (delay === 90000 ? '90 seconds' : delay / 60000 + ' min') +
-            '.',
-        )
+        const delay = backoffDelay(++readFailures)
+        showError('Could not read the board. Trying again ' + retryLabel(delay) + '.')
         retryTimer = setTimeout(() => void run(true), delay)
       }
     } finally {

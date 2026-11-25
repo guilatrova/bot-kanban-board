@@ -1,12 +1,12 @@
+import { backoffDelay, maxBackoff, retryLabel } from '../core/backoff'
 import type { Failure } from '../core/model'
 
 export function retry(failure: Failure, consecutive: number, now: number) {
   const limited =
-    (failure.status === 403 || failure.status === 429) &&
-    (failure.status === 429 || failure.rateLimited || /rate limit/i.test(failure.message))
-  const delay = limited
-    ? Math.max(1000, (failure.resetAt ?? now + 360000) - now)
-    : Math.min(360000, 90000 * 2 ** Math.min(2, consecutive - 1))
+    failure.rateLimited === true ||
+    failure.status === 429 ||
+    (failure.status === 403 && /rate limit/i.test(failure.message))
+  const delay = limited ? Math.max(1000, (failure.resetAt ?? now + maxBackoff) - now) : backoffDelay(consecutive)
   const at = now + delay
   const reason = limited
     ? 'GitHub rate limit reached'
@@ -19,8 +19,6 @@ export function retry(failure: Failure, consecutive: number, now: number) {
           : 'Can’t reach GitHub'
   const when = limited
     ? 'at ' + new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-    : delay === 90000
-      ? 'in 90 seconds'
-      : 'in ' + delay / 60000 + ' min'
+    : retryLabel(delay)
   return { at, limited, message: reason + '. Trying again ' + when + '.' }
 }

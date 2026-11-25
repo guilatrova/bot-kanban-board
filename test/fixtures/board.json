@@ -1,0 +1,28 @@
+{
+  "bot": { "id": "example-bot", "name": "Hazel" },
+  "item": {
+    "number": 7,
+    "title": "Inspect sample",
+    "status": "needs_you",
+    "lastActivityAt": 120,
+    "description": "See orchard/sample#1",
+    "question": { "text": "Which sample?", "options": [{ "label": "First" }] }
+  },
+  "pr": {
+    "number": 1,
+    "title": "Sample marker",
+    "url": "https://github.com/orchard/sample/pull/1",
+    "isDraft": false,
+    "headRefName": "marker",
+    "baseRefName": "main",
+    "body": "Closes #42",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "additions": 5,
+    "deletions": 2,
+    "changedFiles": 1,
+    "mergeable": "MERGEABLE",
+    "repository": { "nameWithOwner": "orchard/sample" },
+    "closingIssuesReferences": { "nodes": [] },
+    "commits": { "nodes": [] }
+  }
+}

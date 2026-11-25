@@ -1,0 +1,13 @@
+{
+  "extends": "./.orca/types/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "typeRoots": ["./.orca/types", "./node_modules/@types"],
+    "types": ["node", "orca", "orca-services", "orca-worker", "orca-frame", "orca-host"]
+  },
+  "include": ["src", "editor", "test"]
+}

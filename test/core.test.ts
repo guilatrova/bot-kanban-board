@@ -1,0 +1,66 @@
+import { describe, it, expect } from 'vitest'
+import sample from './fixtures/board.json'
+import { bots, items, pullRequest } from '../src/core/normalize'
+import { mapPrs } from '../src/core/map-prs'
+import { buildBoard } from '../src/core/board'
+import { botKey, type Bot, type Computer, type Workspace } from '../src/core/model'
+const bot: Bot = { ...sample.bot, computer: 'local', home: null }
+const item = items({ items: [sample.item] }, bot, [])[0]!
+const pr = pullRequest(sample.pr)
+const workspace: Workspace = {
+  computer: 'local',
+  id: 'sample-workspace',
+  bot: bot.name,
+  name: 'Marker',
+  repo: 'sample',
+  branch: 'marker',
+  home: null,
+}
+describe('normalize', () => {
+  it('requires source fields', () => {
+    expect(() => bots({ bots: [{}] }, 'local')).toThrow('id')
+    expect(() => pullRequest({ ...sample.pr, changedFiles: null })).toThrow('changedFiles')
+  })
+  it('preserves optional data and excludes closed rows', () => {
+    expect(item.chat).toBeNull()
+    expect(item.options).toEqual(['First'])
+    expect(items({ items: [{ status: 'done' }] }, bot, [])).toEqual([])
+  })
+})
+describe('mapping', () => {
+  it('prefers direct references and keeps all matching Items', () => {
+    const result = mapPrs([pr], [item, { ...item, number: 8 }, { ...item, text: 'sample#42' }], [workspace])[0]
+    expect(result?.how).toBe('item')
+    expect(result?.items.map((i) => i.number)).toEqual([7, 8])
+    expect(result?.workspaces).toEqual([workspace])
+  })
+  it('respects number and owner boundaries and matches closing issues', () => {
+    expect(
+      mapPrs([pr], [{ ...item, text: 'sample#12 other/sample#1' }], [{ ...workspace, repo: 'other/sample' }])[0]?.how,
+    ).toBeNull()
+    expect(mapPrs([pr], [{ ...item, text: 'orchard/sample#42' }], [])[0]?.how).toBe('issue')
+    expect(mapPrs([pr], [], [workspace])[0]?.how).toBe('branch')
+  })
+})
+it('orders columns, counts bots across computers and applies filters', () => {
+  const computers: Computer[] = ['local', 'remote'].map((key) => ({
+    key,
+    name: key,
+    source: {
+      ok: true,
+      value: {
+        bots: [{ ...bot, computer: key }],
+        items: [
+          { ...item, computer: key },
+          { ...item, number: 9, updated: 1, computer: key },
+        ],
+        workspaces: [],
+      },
+    },
+  }))
+  const board = buildBoard(computers, [pr], [botKey('remote', bot.name)])
+  expect(board.columns.map((c) => c.status)).toEqual(['needs_you', 'in_progress', 'waiting'])
+  expect(board.columns[0]?.items.map((i) => i.number)).toEqual([9, 7])
+  expect(board.bots.map((b) => b.count)).toEqual([2, 2])
+  expect(board.ready).toHaveLength(1)
+})

@@ -15,20 +15,28 @@
     ></div>
     <script>
       const startupError = document.getElementById('startup-error')
-      function showStartupError(reason) {
+      let reportBoardError = (reason) => {
         startupError.textContent = 'Could not load the board. ' + String(reason)
         startupError.hidden = false
       }
       window.addEventListener(
+        'board-drawn',
+        (event) => {
+          reportBoardError = event.detail
+          startupError.remove()
+        },
+        { once: true },
+      )
+      window.addEventListener(
         'error',
         (event) => {
-          if (event instanceof ErrorEvent) showStartupError(event.message)
+          if (event instanceof ErrorEvent) reportBoardError(event.message)
           else if (event.target instanceof HTMLScriptElement || event.target instanceof HTMLLinkElement)
-            showStartupError('Failed to load ' + (event.target.src || event.target.href))
+            reportBoardError('Failed to load ' + (event.target.src || event.target.href))
         },
         true,
       )
-      window.addEventListener('unhandledrejection', (event) => showStartupError(event.reason))
+      window.addEventListener('unhandledrejection', (event) => reportBoardError(event.reason))
     </script>
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./board.ts"></script>

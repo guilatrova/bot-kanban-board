@@ -1,13 +1,26 @@
 import { buildBoard, toggleBot } from '../src/core/board'
-import { botKey, itemKey, prKey, type Item, type MappedPr } from '../src/core/model'
+import { botKey, itemKey, prKey, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, labels, badge, prState, describeFailure, external } from './dom'
+import { el, button, age, labels, badge, prState, describeFailure, notice, external } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 type Row = Item | MappedPr
-export function view(initial: string[]) {
-  let selected = new Set(initial),
-    snapshot: Snapshot | undefined
+import { views, type readViews } from './views'
+import { itemActions, type readActions } from './item-actions'
+export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaited<ReturnType<typeof readActions>>) {
+  let snapshot: Snapshot | undefined
+  const redraw = () => {
+    if (snapshot) draw(snapshot)
+  }
+  const update = () => {
+    void orca.storage.set(snapshot?.demo ? 'demo-views' : 'views', saved).catch(notice)
+    redraw()
+  }
+  const controls = views(saved, update)
+  const actions = itemActions(store, redraw)
+  let sleeping: Item[] = []
+  const snoozed = button('Snoozed 0', () => actions.showList(sleeping), 'chip')
+  const demo = el('mark', 'Demo data')
   const header = el('header'),
     hosts = el('div', '', 'chips'),
     filters = el('nav', '', 'chips'),
@@ -16,17 +29,43 @@ export function view(initial: string[]) {
     message = el('div', '', 'message')
   header.append(
     el('h1', 'Bots board'),
+    demo,
     hosts,
+    controls.trigger,
+    snoozed,
     updated,
     button('↻ Refresh', () => orca.plugin.request('board.refresh')),
   )
   document.body.append(header, filters, message, lanes)
   const confirm = mergeDialog()
   const openMerge = (pr: MappedPr) => confirm(pr, snapshot?.error || snapshot?.repos[pr.repo])
-  const drawer = drawers(openMerge)
+  const drawer = drawers(openMerge, actions.selector)
   let dragging: MappedPr | null = null
+  let draggedItem: Item | null = null
+  const dock = el('aside', '', 'dock')
+  dock.hidden = true
+  document.body.append(dock)
+  for (const target of ['done', 'snooze', 'canceled'] as const) {
+    const zone = el('div', { done: 'Done', snooze: 'Snooze…', canceled: 'Cancel' }[target])
+    zone.ondragover = (e) => {
+      if (draggedItem) e.preventDefault()
+    }
+    zone.ondrop = (e) => {
+      e.preventDefault()
+      const item = draggedItem
+      resetDrag()
+      if (item) {
+        if (target === 'snooze') actions.menu(item, true)
+        else actions.move(item, target)
+      }
+    }
+    dock.append(zone)
+  }
   const resetDrag = () => {
     dragging = null
+    draggedItem = null
+    dock.hidden = true
+    lanes.classList.remove('drag-item')
     lanes.classList.remove('drag-pr')
   }
   const columns = new Map<string, { lane: HTMLElement; heading: HTMLElement; list: HTMLElement }>()
@@ -37,6 +76,17 @@ export function view(initial: string[]) {
     lane.dataset.key = key
     lane.style.setProperty('--tone', 'var(--' + key + ')')
     lane.append(heading, list)
+    if (statuses.includes(key as Status)) {
+      lane.ondragover = (e) => {
+        if (draggedItem) e.preventDefault()
+      }
+      lane.ondrop = (e) => {
+        e.preventDefault()
+        const item = draggedItem
+        resetDrag()
+        if (item) actions.move(item, key as Status)
+      }
+    }
     if (key === 'merged') {
       lane.insertBefore(el('p', 'Drop to review and confirm', 'drop-prompt'), list)
       lane.ondragover = (e) => {
@@ -67,7 +117,17 @@ export function view(initial: string[]) {
   }
   function draw(data: Snapshot) {
     snapshot = data
-    const board = buildBoard(data.computers, data.prs, [...selected])
+    demo.hidden = !data.demo
+    actions.reconcile(
+      data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
+      Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
+    )
+    const board = buildBoard(data.computers, data.prs, saved.current, data.merged)
+    const selected = board.selected
+    sleeping = board.columns.flatMap((c) => c.items.filter(actions.sleep))
+    for (const c of board.columns) c.items = c.items.filter((i) => !actions.sleep(i))
+    snoozed.textContent = 'Snoozed ' + sleeping.length
+    actions.syncList(sleeping)
     const prs = [...board.ready, ...board.draft, ...board.unmapped],
       trees = data.computers.flatMap((c) => (c.source.ok ? c.source.value.workspaces : []))
     updated.textContent = data.itemsAt ? 'Read ' + age(data.itemsAt) : ''
@@ -78,16 +138,19 @@ export function view(initial: string[]) {
         return chip
       }),
     )
+    controls.sync([...data.prs.map((p) => p.repo), ...trees.map((w) => w.repo), ...data.merged.map((p) => p.repo)])
     filters.replaceChildren(
+      controls.repos,
+      controls.needs,
       ...board.bots.map((b) => {
         const key = botKey(b.computer, b.name)
         const chip = button(
           b.name + ' ' + b.count,
-          async (e) => {
+          (e) => {
             const all = board.bots.map((b) => botKey(b.computer, b.name))
-            selected = toggleBot(selected, all, key, e.altKey || e.metaKey)
-            if (snapshot) draw(snapshot)
-            await orca.storage.set('filter', [...selected])
+            const bots = [...toggleBot(selected, all, key, e.altKey || e.metaKey)]
+            saved.current = { ...saved.current, name: '', bots: bots.length ? bots : 'all' }
+            update()
           },
           'chip',
         )
@@ -117,9 +180,23 @@ export function view(initial: string[]) {
         row,
         links.map((l) => ('status' in l ? itemKey(l) : prKey(l))),
         age(row.updated),
+        isItem && actions.pending(row),
       ])
       const open = () => (isItem ? drawer.item(row, prs, trees, element) : drawer.pr(row, element))
-      if (!isItem) {
+      if (isItem) {
+        node.draggable = true
+        node.oncontextmenu = (e) => {
+          e.preventDefault()
+          actions.menu(row)
+        }
+        node.ondragstart = (e) => {
+          draggedItem = row
+          e.dataTransfer?.setData('text/plain', key)
+          lanes.classList.add('drag-item')
+          dock.hidden = false
+        }
+        node.ondragend = resetDrag
+      } else {
         node.draggable = true
         node.ondragstart = (e) => {
           dragging = row
@@ -144,6 +221,17 @@ export function view(initial: string[]) {
         meta.append(el('small', by?.bot ?? 'No bot'), el('time', age(row.updated)))
         node.append(meta, el('small', isItem ? 'Item #' + row.number : prKey(row)), el('h3', row.title))
         if (isItem) {
+          const more = button(
+            'More',
+            (e) => {
+              e.stopPropagation()
+              actions.menu(row)
+            },
+            'more',
+          )
+          meta.append(more)
+          const pending = actions.pending(row)
+          if (pending) node.append(el('mark', pending))
           const sub =
             row.status === 'needs_you'
               ? row.question
@@ -164,6 +252,7 @@ export function view(initial: string[]) {
                 .join(' · '),
             ),
           )
+        if (!isItem && row.behind) node.append(el('p', 'Behind ' + row.behind))
         for (const link of links) {
           const item = 'status' in link,
             k = item ? itemKey(link) : prKey(link)
@@ -201,18 +290,27 @@ export function view(initial: string[]) {
             .join(' · ')
           nodes.push(prError)
         }
-        nodes.push(...board.ready.map(card))
-        if (board.draft.length) nodes.push(drafts, ...board.draft.map(card))
-        if (board.unmapped.length || data.total > data.prs.length) {
-          summary.textContent = 'No bot · ' + board.unmapped.length + ' shown of ' + data.total + ' open'
-          patch(unmapped, board.unmapped.map(card))
-          nodes.push(group)
+        // Keep the familiar groups unless they place a base after its dependent.
+        const positions = new Map(prs.map((pr, index) => [prKey(pr), index]))
+        const splitStack = prs.some((pr, index) => pr.behind && (positions.get(pr.behind) ?? -1) > index)
+        if (splitStack) {
+          nodes.push(...board.ordered.map(card))
+          if (data.total > data.prs.length)
+            nodes.push(el('small', data.prs.length + ' loaded of ' + data.total + ' open'))
+        } else {
+          nodes.push(...board.ready.map(card))
+          if (board.draft.length) nodes.push(drafts, ...board.draft.map(card))
+          if (board.unmapped.length || data.total > data.prs.length) {
+            summary.textContent = 'No bot · ' + board.unmapped.length + ' shown of ' + data.total + ' open'
+            patch(unmapped, board.unmapped.map(card))
+            nodes.push(group)
+          }
         }
       } else if (key === 'merged') {
-        heading.textContent = 'Merged · ' + data.merged.length
+        heading.textContent = 'Merged · ' + board.merged.length
         const error = data.error || data.mergedError
         if (error) nodes.push(el('p', describeFailure(error)))
-        for (const row of data.merged) {
+        for (const row of board.merged) {
           const key = 'merged:' + prKey(row)
           alive.add(key)
           let node = cards.get(key)

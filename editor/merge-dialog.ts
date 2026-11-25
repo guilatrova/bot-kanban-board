@@ -1,5 +1,5 @@
 import { assessMerge, type RepositoryFacts, type MergeMethod } from '../src/core/merge'
-import { prKey, type PullRequest, type Source } from '../src/core/model'
+import { prKey, type MappedPr, type Source } from '../src/core/model'
 import { el, button, describeFailure } from './dom'
 
 const stepLabels = { ready: 'Mark ready', merge: 'Merge' }
@@ -30,7 +30,7 @@ export function mergeDialog() {
       node.textContent = stepLabels[e.step] + ' · ' + e.state
     }
   })
-  return (pr: PullRequest, facts?: Source<RepositoryFacts>) => {
+  return (pr: MappedPr, facts?: Source<RepositoryFacts>) => {
     if (modal.open) return
     active = prKey(pr)
     steps.clear()
@@ -40,6 +40,7 @@ export function mergeDialog() {
     actions.append(cancel)
     modal.replaceChildren(el('small', active), el('h2', pr.title), summary, actions)
     modal.showModal()
+    if (pr.behind) summary.append(el('p', 'Merging out of order · ' + pr.behind + ' is still open.', 'warning'))
     if (!facts?.ok || !pr.sha) {
       summary.append(
         el('p', facts && !facts.ok ? describeFailure(facts) : 'Merge facts unavailable. Refresh the board.'),

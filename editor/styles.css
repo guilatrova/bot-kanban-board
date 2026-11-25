@@ -421,3 +421,67 @@ pre {
     }
   }
 }
+.controls > button,
+.controls input,
+.controls textarea,
+dialog label {
+  margin: 4px;
+}
+.controls input,
+.controls textarea,
+select {
+  background: var(--orca-muted);
+  color: inherit;
+  padding: 6px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+.controls textarea {
+  width: 95%;
+}
+.controls > button {
+  float: none;
+}
+.controls > button:first-of-type {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+.controls h2 {
+  padding-right: 55px;
+}
+.sleeping {
+  opacity: 0.7;
+}
+.dock:not([hidden]) {
+  position: fixed;
+  bottom: 18px;
+  align-self: center;
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: var(--orca-card);
+  box-shadow: var(--dialog-shadow);
+}
+.dock > div {
+  padding: 10px 24px;
+  border: 1px dashed var(--edge);
+  border-radius: var(--radius);
+}
+.drag-item [data-key='planned'][hidden] {
+  display: block;
+}
+.drag-item .lane:not([data-key='merged'], [data-key='prs']) {
+  outline: 1px dashed var(--tone);
+}
+button[aria-pressed='true'] {
+  border-color: var(--orca-ring);
+}
+header {
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+header > * {
+  flex-shrink: 0;
+}

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import sample from './fixtures/board.json'
 import { bots, items, pullRequest } from '../src/core/normalize'
 import { mapPrs } from '../src/core/map-prs'
-import { buildBoard, toggleBot } from '../src/core/board'
+import { allView, buildBoard, toggleBot } from '../src/core/board'
 import { botKey, type Bot, type Computer, type Workspace } from '../src/core/model'
 const bot: Bot = { ...sample.bot, computer: 'local', home: null }
 const item = items({ items: [sample.item] }, bot, [])[0]!
@@ -58,7 +58,7 @@ it('orders columns, counts bots across computers and applies filters', () => {
       },
     },
   }))
-  const board = buildBoard(computers, [pr], [botKey('remote', bot.name)])
+  const board = buildBoard(computers, [pr], { ...allView, bots: [botKey('remote', bot.name)] })
   expect(board.columns.map((c) => c.status)).toEqual(['needs_you', 'in_progress', 'waiting'])
   expect(board.columns[0]?.items.map((i) => i.number)).toEqual([9, 7])
   expect(board.bots.map((b) => b.count)).toEqual([2, 2])
@@ -92,7 +92,7 @@ it('puts Planned first and Waiting in newest-change order', () => {
       },
     ],
     [],
-    [],
+    { ...allView, bots: [] },
   )
   expect(board.columns.map((c) => c.status)).toEqual(['planned', 'needs_you', 'in_progress', 'waiting'])
   expect(board.columns.at(-1)?.items.map((i) => i.number)).toEqual([12, 7])

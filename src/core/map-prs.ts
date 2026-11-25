@@ -1,5 +1,5 @@
 import type { Item, Workspace, PullRequest, MappedPr, IssueRef } from './model'
-function repoMatch(a: string, b: string) {
+export function repoMatch(a: string, b: string) {
   return a.toLowerCase() === (a.includes('/') ? b : b.split('/').pop())?.toLowerCase()
 }
 function mentions(text: string, ref: IssueRef, path: string) {

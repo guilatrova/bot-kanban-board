@@ -14,6 +14,7 @@ export interface Progress {
 }
 import type { Computer, Failure, PullRequest, Source } from './core/model'
 export interface Snapshot {
+  demo?: boolean
   computers: Computer[]
   prs: PullRequest[]
   repos: Record<string, Source<RepositoryFacts>>

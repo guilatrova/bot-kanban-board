@@ -4,7 +4,7 @@ import { prKey, type PullRequest, type Source } from '../../core/model'
 import { runCli } from '../cli'
 import { obj, rows, str, num, pullRequest, fileChange } from '../../core/normalize'
 import { reader, source } from './read'
-export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ number title url isDraft headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}} }}}}`
+export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}} }}}}`
 export function github(path: string) {
   const read = reader('gh', path)
   return source('gh api graphql', async () => {

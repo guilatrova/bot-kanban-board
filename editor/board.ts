@@ -1,16 +1,35 @@
+import { readViews } from './views'
+import { readActions } from './item-actions'
 import { view } from './render'
-import { notice } from './dom'
+import { notice, el } from './dom'
 import type { Snapshot } from '../src/protocol'
 async function start() {
-  const filter = await orca.storage.get('filter')
-  const board = view(Array.isArray(filter) ? filter.filter((k): k is string => typeof k === 'string') : [])
+  const loading = el('p', 'Reading board…', 'message')
+  document.body.append(loading)
+  let board: Promise<ReturnType<typeof view>> | undefined
+  let latest: Snapshot
+  const roster = async () => {
+    await initialRead
+    return latest.computers.flatMap((c) => (c.source.ok ? c.source.value.bots : []))
+  }
   let chunks: string[] = []
   orca.plugin.on('board.changed', (chunk) => {
     if (chunk.index === 0) chunks = []
     chunks[chunk.index] = chunk.data
-    if (chunk.index === chunk.count - 1) board.draw(JSON.parse(chunks.join('')) as Snapshot)
+    if (chunk.index === chunk.count - 1) {
+      const data = JSON.parse(chunks.join('')) as Snapshot
+      latest = data
+      board ??= Promise.all([readViews(Boolean(data.demo), roster), readActions(Boolean(data.demo))]).then(
+        ([saved, actions]) => {
+          loading.remove()
+          return view(saved, actions)
+        },
+      )
+      void board.then((b) => b.draw(data)).catch(notice)
+    }
   })
-  orca.plugin.on('board.focus', board.focus)
-  await orca.plugin.request('board.get', undefined, { timeoutMs: 120000 })
+  orca.plugin.on('board.focus', () => void board?.then((b) => b.focus()))
+  const initialRead = orca.plugin.request('board.get', undefined, { timeoutMs: 120000 })
+  await initialRead
 }
 void start().catch((e) => notice(String(e) + ' · Reopen the board to retry.'))

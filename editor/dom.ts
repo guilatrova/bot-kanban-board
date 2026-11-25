@@ -59,6 +59,9 @@ export function prState(pr: { draft: boolean; mergeable: string }) {
         ? 'Ready to merge'
         : 'Ready for review'
 }
+export function prPill(pr: { draft: boolean; mergeable: string }) {
+  return el('mark', prState(pr), pr.draft ? 'draft' : pr.mergeable === 'CONFLICTING' ? 'conflict' : 'ready')
+}
 export function external(label: string, url: string) {
   return button(label, async () => {
     if (new URL(url).protocol !== 'https:') throw Error('Invalid GitHub URL')

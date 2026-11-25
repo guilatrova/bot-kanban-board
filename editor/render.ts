@@ -1,7 +1,7 @@
 import { buildBoard, toggleBot } from '../src/core/board'
 import { botKey, itemKey, prKey, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, labels, badge, prState, describeFailure, notice, external } from './dom'
+import { el, button, age, labels, badge, prPill, describeFailure, notice, external } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 type Row = Item | MappedPr
@@ -251,7 +251,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           if (row.chat) node.append(el('small', row.chat))
         } else
           node.append(
-            el('mark', prState(row), row.draft ? 'draft' : row.mergeable === 'CONFLICTING' ? 'conflict' : 'ready'),
+            prPill(row),
             el(
               'small',
               ['+' + row.additions + ' −' + row.deletions, row.files + ' files', row.checks]

@@ -1,9 +1,12 @@
+import type { Bell } from '../src/core/bells'
 import { prKey } from '../src/core/model'
 import { manualBotNotification } from '../src/core/merge'
 import { demoBoard } from '../src/demo'
 import type { OrcaFrameApi } from 'orca/frame'
 const state = new URLSearchParams(location.search).get('state')
 const data = demoBoard(state)
+data.bells = JSON.parse(sessionStorage.getItem('demo-bells') || '[]') as Bell[]
+data.notificationsOff = state === 'notifications-off'
 const handlers = new Map<string, (v: unknown) => void>()
 const send = () => handlers.get('board.changed')?.({ index: 0, count: 1, data: JSON.stringify(data) })
 const fake = {
@@ -13,10 +16,23 @@ const fake = {
   },
   plugin: {
     on: (k: string, fn: (v: unknown) => void) => handlers.set(k, fn),
-    request: async (k: string, input?: { repo: string; number: number }) => {
+    request: async (k: string, input?: { repo: string; number: number; bell: Bell; on: boolean }) => {
       if (k === 'board.get' || k === 'board.refresh') {
         if (state !== 'loading') send()
         return null
+      }
+      if (k === 'bell.set' && input) {
+        data.bells = (data.bells ?? []).filter((b) => b.id !== input.bell.id)
+        if (input.on) data.bells.push(input.bell)
+        sessionStorage.setItem('demo-bells', JSON.stringify(data.bells))
+        send()
+        return null
+      }
+      if (k === 'pr.close' && input) {
+        data.prs = data.prs.filter((p) => p.repo !== input.repo || p.number !== input.number)
+        data.total = data.prs.length
+        send()
+        return { ok: true, value: null }
       }
       if (k === 'pr.merge' && input) {
         const row = data.prs.find((p) => p.repo === input.repo && p.number === input.number)!

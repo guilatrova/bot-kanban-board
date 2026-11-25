@@ -1,4 +1,6 @@
 import {
+  isClosed,
+  itemKey,
   statuses,
   type Bot,
   type Computer,
@@ -9,6 +11,7 @@ import {
   type PullRequest,
   type FileChange,
 } from './model'
+import { isToday } from './merge'
 export function obj(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Expected an object')
   return value as Record<string, unknown>
@@ -73,6 +76,7 @@ export function unpairedComputers(
   return [...groups].map(([key, group]) => ({
     key,
     name: group.name,
+    unpaired: true,
     warning: {
       ok: false,
       command: 'orca environment list',
@@ -110,13 +114,38 @@ function worker(w: Record<string, unknown>): Worker {
 export function workers(data: unknown) {
   return rows(obj(data).items).map(obj).map(worker)
 }
-export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
+export function items(
+  data: unknown,
+  bot: Bot,
+  live: Worker[],
+  watched = new Set<string>(),
+  warn?: (message: string) => void,
+): Item[] {
   return rows(obj(data).items)
     .map(obj)
     .flatMap((i) => {
       const status = str(i, 'status')
-      if (['done', 'canceled'].includes(status)) return []
-      if (!statuses.includes(status as Status)) throw Error('Unknown Item status')
+      const closed = isClosed(status)
+      let updated: number
+      if (closed) {
+        const timestamp = [i.closedAt, i.updatedAt, i.lastActivityAt]
+          .map((value) => (typeof value === 'number' || typeof value === 'string' ? new Date(value).getTime() : NaN))
+          .find(Number.isFinite)
+        if (timestamp === undefined) {
+          warn?.(
+            `Skipping closed Item ${bot.name} #${i.number} on ${bot.computer}: no valid closedAt, updatedAt or lastActivityAt.`,
+          )
+          return []
+        }
+        updated = timestamp
+      } else updated = num(i, 'lastActivityAt')
+      if (
+        closed &&
+        !isToday(new Date(updated)) &&
+        !watched.has(itemKey({ ...bot, bot: bot.name, number: Number(i.number) }))
+      )
+        return []
+      if (!closed && !statuses.some((s) => s === status)) throw Error('Unknown Item status')
       const q = nested(i.question),
         chat = nested(i.chat),
         links = rows(i.links ?? []).map(obj)
@@ -137,7 +166,7 @@ export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
           status: status as Status,
           snoozedUntil:
             typeof i.snoozedUntil === 'number' ? i.snoozedUntil : Date.parse(opt(i.snoozedUntil) ?? '') || undefined,
-          updated: num(i, 'lastActivityAt'),
+          updated,
           chat: opt(chat.title),
           chatId: opt(chat.id),
           description: opt(i.description),

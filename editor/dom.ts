@@ -22,6 +22,7 @@ export function button(label: string, action: (event: MouseEvent) => unknown, cl
   }
   return b
 }
+let noticeTimer: ReturnType<typeof setTimeout>
 export function notice(error: unknown) {
   let node = document.querySelector<HTMLElement>('#notice')
   if (!node) {
@@ -30,7 +31,9 @@ export function notice(error: unknown) {
     node.setAttribute('role', 'status')
     document.body.append(node)
   }
+  clearTimeout(noticeTimer)
   node.textContent = hideIds(String(error))
+  noticeTimer = setTimeout(() => node.replaceChildren(), 6500)
 }
 export const age = (time: number | string) => {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(time).getTime()) / 60000))
@@ -43,6 +46,9 @@ export const age = (time: number | string) => {
         : Math.floor(minutes / 1440) + 'd ago'
 }
 export const labels = {
+  closed: 'Closed',
+  done: 'Completed',
+  canceled: 'Cancelled',
   planned: 'Planned',
   needs_you: 'Needs you',
   in_progress: 'In progress',

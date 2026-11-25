@@ -93,8 +93,8 @@ it('orders columns, counts bots across computers and applies filters', () => {
     },
   }))
   const board = buildBoard(computers, [pr], { ...allView, bots: [botKey('remote', bot.name)] })
-  expect(board.columns.map((c) => c.status)).toEqual(['needs_you', 'in_progress', 'waiting'])
-  expect(board.columns[0]?.items.map((i) => i.number)).toEqual([9, 7])
+  expect(board.columns.map((c) => c.status)).toEqual(['waiting', 'needs_you', 'in_progress', 'closed'])
+  expect(board.columns[1]?.items.map((i) => i.number)).toEqual([9, 7])
   expect(board.bots.map((b) => b.count)).toEqual([2, 2])
   expect(board.ready).toHaveLength(1)
 })
@@ -105,7 +105,7 @@ it('solos, toggles, and restores all bots when the last is disabled', () => {
   expect([...toggleBot(new Set(['one']), all, 'two', true)]).toEqual(['two'])
   expect([...toggleBot(new Set(['two']), all, 'two', false)]).toEqual([])
 })
-it('puts Planned first and Waiting in newest-change order', () => {
+it('puts Planned in Waiting and Waiting in newest-change order', () => {
   const board = buildBoard(
     [
       {
@@ -128,8 +128,8 @@ it('puts Planned first and Waiting in newest-change order', () => {
     [],
     { ...allView, bots: [] },
   )
-  expect(board.columns.map((c) => c.status)).toEqual(['planned', 'needs_you', 'in_progress', 'waiting'])
-  expect(board.columns.at(-1)?.items.map((i) => i.number)).toEqual([12, 7])
+  expect(board.columns.map((c) => c.status)).toEqual(['waiting', 'needs_you', 'in_progress', 'closed'])
+  expect(board.columns[0]?.items.map((i) => i.number)).toEqual([12, 7, 7])
 })
 it('reads decision replies and excludes structured PR link metadata from mapping', () => {
   const [i] = items(

@@ -49,6 +49,7 @@
     ]
   },
   "capabilities": [
+    { "kind": "notifications:show" },
     { "kind": "storage:own" },
     { "kind": "settings:own" },
     { "kind": "workspace:read" },

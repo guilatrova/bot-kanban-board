@@ -3,9 +3,10 @@ import type { Snapshot } from '../protocol'
 import { prKey } from '../core/model'
 import { computers } from './sources/orca'
 import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
-import { github, files, mergePr } from './sources/github'
+import { github, files, mergePr, closePr } from './sources/github'
 import { openBoard } from './board-file'
 import { avatars } from './avatars'
+import { notifications } from './bells'
 import { jump } from './jump'
 import { demoBoard } from '../demo'
 import { parseActions, moveState } from '../core/actions'
@@ -42,6 +43,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         panel ? { panel } : undefined,
       )
   }
+  const evaluateBells = await notifications(orca, data, publish)
   let itemJob: Promise<void> | null = null,
     prJob: Promise<void> | null = null
   function refreshItems() {
@@ -56,15 +58,22 @@ export default async function activate(orca: OrcaWorkerApi) {
           )
           .map(([key]) => key),
       )
-      data.computers = await computers(await path('orcaPath'), closing, (computer) => {
-        const position = data.computers.findIndex((previous) => previous.key === computer.key)
-        if (position < 0) data.computers.push(computer)
-        else data.computers[position] = computer
-        data.itemsAt = Date.now()
-        publish()
-      })
+      for (const bell of data.bells ?? []) if (bell.kind === 'item') closing.add(bell.id)
+      data.computers = await computers(
+        await path('orcaPath'),
+        closing,
+        (computer) => {
+          const position = data.computers.findIndex((previous) => previous.key === computer.key)
+          if (position < 0) data.computers.push(computer)
+          else data.computers[position] = computer
+          data.itemsAt = Date.now()
+          publish()
+        },
+        (message) => orca.log(message),
+      )
       data.itemsAt = Date.now()
       publish()
+      await evaluateBells({ items: data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])) })
       await avatar.prune(data.computers)
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
@@ -97,6 +106,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         data.total = result.value.total
         data.prsAt = Date.now()
         data.error = null
+        await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded && merged.ok })
         const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
         for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
       } else data.error = result
@@ -135,6 +145,33 @@ export default async function activate(orca: OrcaWorkerApi) {
   orca.panels.handle('board.jump', async (input) =>
     demo ? 'Demo chat selected.' : jump(orca, data.computers, await path('orcaPath'), input),
   )
+  orca.panels.handle('pr.close', async (input) => {
+    const key = prKey(input)
+    const pr = data.prs.find((p) => prKey(p) === key)
+    if (demo || !pr || merging.has(key) || data.error)
+      return {
+        ok: false as const,
+        command: 'Close PR',
+        message: demo ? 'Demo data is read-only.' : 'Pull request unavailable.',
+        next: 'Refresh the board.',
+      }
+    merging.add(key)
+    try {
+      const result = await closePr(await path('ghPath'), pr)
+      if (result.ok) {
+        data.prs = data.prs.filter((p) => prKey(p) !== key)
+        data.total = Math.max(0, data.total - 1)
+        publish()
+      }
+      return result
+    } finally {
+      merging.delete(key)
+      void (async () => {
+        await prJob
+        await refreshPrs()
+      })().catch(report)
+    }
+  })
   orca.panels.handle('pr.merge', async (input, context) => {
     if (demo)
       return {

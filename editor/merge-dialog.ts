@@ -1,6 +1,6 @@
 import { assessMerge, type RepositoryFacts, type MergeMethod } from '../src/core/merge'
 import { prKey, type MappedPr, type Source } from '../src/core/model'
-import { el, button, describeFailure } from './dom'
+import { el, button, describeFailure, notice } from './dom'
 
 const stepLabels = { ready: 'Mark ready', merge: 'Merge' }
 export function mergeDialog() {
@@ -30,7 +30,7 @@ export function mergeDialog() {
       node.textContent = stepLabels[e.step] + ' · ' + e.state
     }
   })
-  return (pr: MappedPr, facts?: Source<RepositoryFacts>) => {
+  return (pr: MappedPr, facts?: Source<RepositoryFacts>, closing = false) => {
     if (modal.open) return
     active = prKey(pr)
     steps.clear()
@@ -40,6 +40,30 @@ export function mergeDialog() {
     actions.append(cancel)
     modal.replaceChildren(el('small', active), el('h2', pr.title), summary, actions)
     modal.showModal()
+    modal.setAttribute('aria-label', closing ? 'Confirm pull request close' : 'Confirm pull request merge')
+    if (closing) {
+      modal.replaceChildren(el('h2', 'Close ' + active + ' without merging?'), actions)
+      actions.append(
+        button(
+          'Close PR',
+          async () => {
+            if (busy) return
+            busy = true
+            actions.inert = true
+            try {
+              const result = await orca.plugin.request('pr.close', { repo: pr.repo, number: pr.number })
+              if (!result.ok) notice(describeFailure(result))
+            } finally {
+              busy = false
+              actions.inert = false
+              modal.close()
+            }
+          },
+          'confirm danger',
+        ),
+      )
+      return
+    }
     if (pr.behind) summary.append(el('p', 'Merging out of order · ' + pr.behind + ' is still open.', 'warning'))
     if (!facts?.ok || !pr.sha) {
       summary.append(

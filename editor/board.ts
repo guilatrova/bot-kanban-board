@@ -19,12 +19,22 @@ async function start() {
     if (chunk.index === chunk.count - 1) {
       const data = JSON.parse(chunks.join('')) as Snapshot
       latest = data
-      board ??= Promise.all([readViews(Boolean(data.demo), roster), readActions(Boolean(data.demo))]).then(
-        ([saved, actions]) => {
-          loading.remove()
-          return view(saved, actions)
-        },
-      )
+      board ??= Promise.all([
+        readViews(Boolean(data.demo), roster),
+        readActions(Boolean(data.demo)),
+        orca.storage.get('collapsed'),
+      ]).then(([saved, actions, collapsed]) => {
+        loading.remove()
+        return view(
+          saved,
+          actions,
+          new Set<string>(
+            Array.isArray(collapsed)
+              ? collapsed.filter((k): k is string => typeof k === 'string')
+              : ['waiting', 'closed'],
+          ),
+        )
+      })
       void board.then((b) => b.draw(data)).catch(notice)
     }
   })

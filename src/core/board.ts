@@ -1,5 +1,5 @@
-import { botKey, statuses, type Computer, type PullRequest } from './model'
-import type { MergedPr } from './merge'
+import { botKey, isClosed, itemLane, itemLanes, type Computer, type PullRequest } from './model'
+import { isToday, type MergedPr } from './merge'
 import { stackOrder } from './stacks'
 import { mapPrs, repoMatch } from './map-prs'
 export type View = { name: string; bots: string[] | 'all'; repos: string[] | 'all'; needsMeOnly: boolean }
@@ -14,7 +14,13 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
     items = sources.flatMap((s) => s.items)
   const selected = selectedBots(view.bots, bots)
   const workspaces = sources.flatMap((s) => s.workspaces)
-  const allPrs = stackOrder(mapPrs(prs, items, workspaces))
+  const allPrs = stackOrder(
+    mapPrs(
+      prs,
+      items.filter((i) => !isClosed(i.status)),
+      workspaces,
+    ),
+  )
   const acceptsRepo = (repo: string) =>
     view.repos === 'all' || view.repos.some((r) => repoMatch(repo, r) || repoMatch(r, repo))
   function itemVisible(i: (typeof items)[number]) {
@@ -34,14 +40,15 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
     return !known.length || known.some(acceptsRepo)
   }
   const visible = (c: string, b: string) => !selected.size || selected.has(botKey(c, b))
-  const columns = statuses
-    .map((status) => ({
-      status,
-      items: items
-        .filter((i) => i.status === status && itemVisible(i))
-        .sort((a, b) => (status === 'needs_you' ? a.updated - b.updated : b.updated - a.updated)),
-    }))
-    .filter((c) => c.status !== 'planned' || c.items.length)
+  const columns = itemLanes.map((status) => ({
+    status,
+    items: items
+      .filter(
+        (i) => itemLane(i.status) === status && (status !== 'closed' || isToday(new Date(i.updated))) && itemVisible(i),
+      )
+      .sort((a, b) => (status === 'needs_you' ? a.updated - b.updated : b.updated - a.updated)),
+  }))
+
   const mapped = allPrs.filter(
     (p) =>
       acceptsRepo(p.repo) &&
@@ -52,15 +59,19 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
     columns,
     selected,
     merged: merged.filter((pr) => !view.needsMeOnly && !selected.size && acceptsRepo(pr.repo)),
-    bots: bots.map((b) => ({ ...b, count: items.filter((i) => i.bot === b.name && i.computer === b.computer).length })),
+    bots: bots.map((b) => ({
+      ...b,
+      count: items.filter((i) => !isClosed(i.status) && i.bot === b.name && i.computer === b.computer).length,
+    })),
     computers: computers
       .filter((c) => !c.source.ok || c.source.value.bots.length || c.warning)
       .map((c) => ({
         key: c.key,
         name: c.name,
         warning: c.warning,
+        unreachable: !c.source.ok || c.unpaired === true,
         error: c.source.ok ? null : c.source,
-        count: items.filter((i) => i.computer === c.key).length,
+        count: items.filter((i) => !isClosed(i.status) && i.computer === c.key).length,
       })),
     ordered: mapped,
     ready: mapped.filter((p) => p.how && !p.draft),

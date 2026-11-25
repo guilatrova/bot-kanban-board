@@ -9,6 +9,7 @@ import {
   parseActions,
   targets,
 } from '../src/core/actions'
+import { popover } from './popover'
 import { panel, ask } from './controls'
 import { el, button, labels, notice } from './dom'
 
@@ -86,24 +87,87 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     changed()
     notice('Snoozed on this board only; the bot is not told.')
   }
-  function menu(item: Item, onlySnooze = false) {
-    const dialog = panel(onlySnooze ? 'Snooze Item' : 'Item #' + item.number + ' actions')
-    if (!onlySnooze)
-      for (const target of targets.filter((t) => t !== item.status))
-        dialog.append(
-          button(names[target], () => {
-            dialog.close()
-            move(item, target)
-          }),
-        )
-    dialog.append(el('h3', 'Snooze on this board'))
-    for (const choice of snoozeChoices)
-      dialog.append(
-        button(choice, () => {
-          dialog.close()
-          snooze(item, choice)
-        }),
+  function menu(item: Item, anchor: HTMLElement) {
+    const parent = popover(anchor)
+    parent.node.setAttribute('role', 'menu')
+    const shortcuts = new Map<string, HTMLButtonElement>()
+    function entry(label: string, hint: string, action: () => unknown, current = false) {
+      const row = button(
+        label,
+        () => {
+          parent.close(true)
+          return action()
+        },
+        'mi',
       )
+      row.append(el('small', hint, 'k'))
+      row.setAttribute('role', current ? 'menuitemradio' : 'menuitem')
+      if (current) {
+        row.setAttribute('aria-checked', 'true')
+        row.prepend('✓ ')
+      }
+      parent.node.append(row)
+      shortcuts.set(hint.toLowerCase(), row)
+      return row
+    }
+    parent.node.append(el('div', 'Move to', 'mlabel'))
+    for (const [target, key] of [
+      ['needs_you', 'N'],
+      ['in_progress', 'P'],
+      ['waiting', 'W'],
+    ] as const)
+      entry(
+        names[target],
+        key,
+        () => move(item, target),
+        item.status === target || (item.status === 'planned' && target === 'waiting'),
+      )
+    parent.node.append(el('hr'))
+    entry('Complete', 'D', () => move(item, 'done'))
+    entry('Cancel…', '⌫', () => move(item, 'canceled'))
+    parent.node.append(el('hr'))
+    let sub: ReturnType<typeof popover> | undefined
+    function openSub() {
+      if (sub?.node.isConnected) {
+        sub.node.querySelector('button')?.focus()
+        return
+      }
+      sub = popover(trigger, true)
+      for (const choice of snoozeChoices)
+        sub.node.append(
+          button(
+            choice,
+            () => {
+              parent.close(true)
+              snooze(item, choice)
+            },
+            'mi',
+          ),
+        )
+      sub.position()
+    }
+    const trigger = button('Snooze', openSub, 'mi')
+    trigger.append(el('small', '›', 'k'))
+    trigger.setAttribute('aria-haspopup', 'menu')
+    trigger.onkeydown = (e) => {
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        openSub()
+      }
+    }
+    parent.node.append(trigger)
+    entry('Open chat in Orca', '↵', async () =>
+      notice(await orca.plugin.request('board.jump', { computer: item.computer, bot: item.bot, number: item.number })),
+    )
+    parent.node.addEventListener('dismiss', () => sub?.close())
+    parent.node.addEventListener('keydown', (e) => {
+      const row = shortcuts.get(e.key === 'Backspace' || e.key === 'Delete' ? '⌫' : e.key.toLowerCase())
+      if (row && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        row.click()
+      }
+    })
+    parent.position()
   }
   function selector(item: Item) {
     const label = el('label', 'Request status '),

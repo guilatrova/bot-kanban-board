@@ -1,13 +1,21 @@
-import { buildBoard, toggleBot } from '../src/core/board'
-import { botKey, itemKey, prKey, itemLanes, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
+import { cardMotion } from './card-motion'
+import { buildBoard } from '../src/core/board'
+import { itemKey, prKey, isClosed, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, labels, badge, prPill, describeFailure, notice, external } from './dom'
+import { el, button, age, badge, prPill, describeFailure, notice, external } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
+import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
+import { boardHeader } from './header'
+import type { Bell } from '../src/core/bells'
 type Row = Item | MappedPr
-import { views, type readViews } from './views'
+import { type readViews } from './views'
 import { itemActions, type readActions } from './item-actions'
-export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaited<ReturnType<typeof readActions>>) {
+export function view(
+  saved: Awaited<ReturnType<typeof readViews>>,
+  store: Awaited<ReturnType<typeof readActions>>,
+  collapsed: Set<string>,
+) {
   let snapshot: Snapshot | undefined
   const redraw = () => {
     if (snapshot) draw(snapshot)
@@ -16,68 +24,35 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
     void orca.storage.set(snapshot?.demo ? 'demo-views' : 'views', saved).catch(notice)
     redraw()
   }
-  const controls = views(saved, update)
   const actions = itemActions(store, redraw)
   let sleeping: Item[] = []
   const snoozed = button('Snoozed 0', () => actions.showList(sleeping), 'chip')
-  const demo = el('mark', 'Demo data')
-  const header = el('header'),
-    hosts = el('div', '', 'chips'),
-    filters = el('nav', '', 'chips'),
-    updated = el('small'),
-    lanes = el('main'),
-    message = el('div', '', 'message')
-  header.append(
-    el('h1', 'Bots board'),
-    demo,
-    hosts,
-    controls.trigger,
-    snoozed,
-    updated,
-    button('↻ Refresh', () => orca.plugin.request('board.refresh')),
-  )
-  document.body.append(header, filters, message, lanes)
+  const header = boardHeader(saved, update, snoozed)
+  const { lanes } = header
   const confirm = mergeDialog()
   const openMerge = (pr: MappedPr) => confirm(pr, snapshot?.error || snapshot?.repos[pr.repo])
   const drawer = drawers(openMerge, actions.selector)
   let dragging: MappedPr | null = null
   let draggedItem: Item | null = null
-  const dock = el('aside', '', 'dock')
-  dock.hidden = true
-  document.body.append(dock)
-  for (const target of ['done', 'snooze', 'canceled'] as const) {
-    const zone = el('div', { done: 'Done', snooze: 'Snooze…', canceled: 'Cancel' }[target])
-    zone.ondragover = (e) => {
-      if (draggedItem) e.preventDefault()
-    }
-    zone.ondrop = (e) => {
-      e.preventDefault()
-      const item = draggedItem
-      resetDrag()
-      if (item) {
-        if (target === 'snooze') actions.menu(item, true)
-        else actions.move(item, target)
-      }
-    }
-    dock.append(zone)
+  const columns = new Map<Lane, ReturnType<typeof makeLane>>()
+  function dragTarget(key: 'merged' | 'closed', on: boolean) {
+    const col = columns.get(key)
+    if (!on) col?.lane.querySelector('.over')?.classList.remove('over')
+    col?.expandForDrag(on)
+    col?.lane.classList.toggle('target', on)
   }
-  const resetDrag = () => {
+  function resetDrag() {
     dragging = null
     draggedItem = null
-    dock.hidden = true
-    lanes.classList.remove('drag-item')
-    lanes.classList.remove('drag-pr')
+    dragTarget('closed', false)
+    dragTarget('merged', false)
   }
-  const columns = new Map<string, { lane: HTMLElement; heading: HTMLElement; list: HTMLElement }>()
-  for (const [key, title] of [...itemLanes, 'prs', 'merged'].map(
-    (key) => [key, labels[key as keyof typeof labels]] as const,
-  )) {
-    const lane = el('section', '', 'lane'),
-      heading = el('h2', title),
-      list = el('div', '', 'list')
-    lane.dataset.key = key
-    lane.style.setProperty('--tone', 'var(--' + key + ')')
-    lane.append(heading, list)
+  for (const key of laneKeys) {
+    const col = makeLane(key, collapsed, () => orca.storage.set('collapsed', [...collapsed]))
+    const { lane, list } = col
+    if (key === 'prs') lanes.append(divider())
+    lanes.append(lane)
+    columns.set(key, col)
     if (statuses.some((s) => s === key)) {
       lane.ondragover = (e) => {
         if (draggedItem) e.preventDefault()
@@ -89,20 +64,32 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
         if (item) actions.move(item, key as Status)
       }
     }
-    if (key === 'merged') {
-      lane.insertBefore(el('p', 'Drop to review and confirm', 'drop-prompt'), list)
-      lane.ondragover = (e) => {
-        if (dragging) e.preventDefault()
+    if (key === 'closed' || key === 'merged') {
+      const split = el('div', '', 'split')
+      for (const [index, title] of (key === 'closed' ? ['Completed', 'Cancelled'] : ['Merge', 'Close PR']).entries()) {
+        const zone = el('div', title, 'zone')
+        zone.ondragover = (e) => {
+          if (key === 'closed' ? draggedItem : dragging) {
+            e.preventDefault()
+            zone.classList.add('over')
+          }
+        }
+        zone.ondragleave = () => zone.classList.remove('over')
+        zone.ondrop = (e) => {
+          e.preventDefault()
+          const item = draggedItem,
+            pr = dragging
+          resetDrag()
+          if (key === 'closed' && item) actions.move(item, index === 0 ? 'done' : 'canceled')
+          if (key === 'merged' && pr) {
+            if (index === 0) openMerge(pr)
+            else confirm(pr, undefined, true)
+          }
+        }
+        split.append(zone)
       }
-      lane.ondrop = (e) => {
-        e.preventDefault()
-        const pr = dragging
-        resetDrag()
-        if (pr) openMerge(pr)
-      }
+      lane.append(split)
     }
-    lanes.append(lane)
-    columns.set(key, { lane, heading, list })
     for (let n = 0; n < 3; n++) list.append(el('div', '', 'skeleton'))
   }
   const cards = new Map<string, HTMLElement>(),
@@ -119,58 +106,26 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
   }
   function draw(data: Snapshot) {
     snapshot = data
-    demo.hidden = !data.demo
     actions.reconcile(
       data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
       Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
     )
     const board = buildBoard(data.computers, data.prs, saved.current, data.merged)
-    const selected = board.selected
     sleeping = board.columns.flatMap((c) => c.items.filter(actions.sleep))
     for (const c of board.columns) c.items = c.items.filter((i) => !actions.sleep(i))
     snoozed.textContent = 'Snoozed ' + sleeping.length
     actions.syncList(sleeping)
     const prs = [...board.ready, ...board.draft, ...board.unmapped],
       trees = data.computers.flatMap((c) => (c.source.ok ? c.source.value.workspaces : []))
-    updated.textContent = data.itemsAt ? 'Read ' + age(data.itemsAt) : ''
-    hosts.replaceChildren(
-      ...board.computers.map((c) => {
-        const chip = el('span', c.name + ' · ' + (c.error ? 'Unreachable' : c.count), 'chip')
-        if (c.error) chip.append(el('small', describeFailure(c.error)))
-        if (c.warning) chip.append(el('small', describeFailure(c.warning)))
-        return chip
-      }),
-    )
-    controls.sync([...data.prs.map((p) => p.repo), ...trees.map((w) => w.repo), ...data.merged.map((p) => p.repo)])
-    filters.replaceChildren(
-      controls.repos,
-      controls.needs,
-      ...board.bots.map((b) => {
-        const key = botKey(b.computer, b.name)
-        const chip = button(
-          b.name + ' ' + b.count,
-          (e) => {
-            const all = board.bots.map((b) => botKey(b.computer, b.name))
-            const bots = [...toggleBot(selected, all, key, e.altKey || e.metaKey)]
-            saved.current = { ...saved.current, name: '', bots: bots.length ? bots : 'all' }
-            update()
-          },
-          'chip',
-        )
-        chip.prepend(badge(b.computer, b.name))
-        if (b.warning) chip.append(el('small', describeFailure(b.warning)))
-        chip.setAttribute('aria-pressed', String(!selected.size || selected.has(key)))
-        return chip
-      }),
-    )
-    message.textContent =
-      data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error && !c.warning)
-        ? 'No bots yet. Open Items will appear here when a bot creates one.'
-        : ''
+    header.draw(data, board, trees)
+    const animate = cardMotion(cards)
     const alive = new Set<string>()
     function card(row: Row) {
       const isItem = 'status' in row,
+        closed = isItem && isClosed(row.status),
         key = isItem ? itemKey(row) : prKey(row)
+      const bell: Bell = isItem ? { kind: 'item', id: key, baseline: row.status } : { kind: 'pr', id: key }
+      const ringing = data.bells?.some((b) => b.id === key) ?? false
       alive.add(key)
       let node = cards.get(key)
       if (!node) {
@@ -182,22 +137,24 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       const links = isItem ? prs.filter((p) => p.items.some((i) => itemKey(i) === key)) : row.items
       const signature = JSON.stringify([
         row,
+        ringing,
+        data.notificationsOff,
         links.map((l) => ('status' in l ? itemKey(l) : prKey(l))),
         age(row.updated),
         isItem && actions.pending(row),
       ])
       const open = () => (isItem ? drawer.item(row, prs, trees, element) : drawer.pr(row, element))
       if (isItem) {
-        node.draggable = true
+        node.draggable = !closed
         node.oncontextmenu = (e) => {
           e.preventDefault()
-          actions.menu(row)
+          const anchor = element.querySelector<HTMLElement>('.more')
+          if (anchor) actions.menu(row, anchor)
         }
         node.ondragstart = (e) => {
           draggedItem = row
           e.dataTransfer?.setData('text/plain', key)
-          lanes.classList.add('drag-item')
-          dock.hidden = false
+          dragTarget('closed', true)
         }
         node.ondragend = resetDrag
       } else {
@@ -205,7 +162,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
         node.ondragstart = (e) => {
           dragging = row
           e.dataTransfer?.setData('text/plain', key)
-          lanes.classList.add('drag-pr')
+          dragTarget('merged', true)
         }
         node.ondragend = resetDrag
       }
@@ -228,17 +185,41 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           el('time', age(row.updated)),
         )
         node.append(meta, el('h3', row.title))
+        if (!closed) {
+          const toggle = button(
+            '',
+            (e) => {
+              e.stopPropagation()
+              return orca.plugin.request('bell.set', { bell, on: !ringing })
+            },
+            'bell',
+          )
+          toggle.append(icon('M4 17h16l-2-3V9a6 6 0 0 0-12 0v5zM10 20a2 2 0 0 0 4 0'))
+          toggle.setAttribute('aria-label', 'Notify me')
+          toggle.setAttribute('aria-pressed', String(ringing))
+          meta.append(toggle)
+          if (ringing && data.notificationsOff)
+            node.append(
+              el(
+                'small',
+                'Notifications for Orca are off. Turn them on in System Settings › Notifications › Orca.',
+                'bell-note',
+              ),
+            )
+        }
         if (isItem) {
+          if (closed || row.status === 'planned')
+            node.append(el('mark', closed ? (row.status === 'done' ? 'Completed' : 'Cancelled') : 'Planned'))
           const more = button(
             '',
             (e) => {
               e.stopPropagation()
-              actions.menu(row)
+              actions.menu(row, more)
             },
             'more',
           )
           more.setAttribute('aria-label', 'More')
-          meta.append(more)
+          if (!closed) meta.append(more)
           const pending = actions.pending(row)
           if (pending) node.append(el('mark', pending))
           const sub =
@@ -287,12 +268,16 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       }
       while (parent.children.length > children.length) parent.lastElementChild?.remove()
     }
-    for (const [key, { heading, list }] of columns) {
+    for (const [key, col] of columns) {
+      const { list } = col
       const column = board.columns.find((c) => c.status === key)
 
       let nodes: HTMLElement[] = []
       if (key === 'prs') {
-        heading.replaceChildren(labels.prs, el('span', String(prs.length)))
+        col.update(
+          prs.length,
+          prs.flatMap((p) => [...p.items, ...p.workspaces]),
+        )
         if (data.error) {
           prError.textContent = [describeFailure(data.error), data.prsAt ? 'Last read ' + age(data.prsAt) : '']
             .filter(Boolean)
@@ -316,7 +301,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           }
         }
       } else if (key === 'merged') {
-        heading.replaceChildren('Merged', el('span', 'today ' + board.merged.length))
+        col.update(board.merged.length, [])
         const error = data.error || data.mergedError
         if (error) nodes.push(el('p', describeFailure(error)))
         for (const row of board.merged) {
@@ -334,17 +319,18 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           nodes.push(node)
         }
       } else if (column) {
-        heading.replaceChildren(labels[column.status], el('span', String(column.items.length)))
+        col.update(column.items.length, column.items)
         nodes = column.items.map(card)
       }
       const reading = key === 'prs' || key === 'merged' ? !data.prsAt && !data.error : !data.itemsAt
-      patch(list, nodes.length ? nodes : reading ? [el('div', '', 'skeleton')] : [el('p', 'Nothing here.', 'empty')])
+      patch(list, nodes.length ? nodes : reading ? [el('div', '', 'skeleton')] : [col.empty])
     }
     for (const key of cards.keys())
       if (!alive.has(key)) {
         cards.delete(key)
         signatures.delete(key)
       }
+    animate(alive)
     if (data.focus) focus()
   }
   return { draw, focus }

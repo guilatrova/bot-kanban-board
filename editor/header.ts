@@ -1,0 +1,102 @@
+import { type Board, toggleBot } from '../src/core/board'
+import { botKey, type Workspace } from '../src/core/model'
+import type { Snapshot } from '../src/protocol'
+import { el, button, age, badge, describeFailure } from './dom'
+import { views, type readViews } from './views'
+import { popover } from './popover'
+import { icon } from './lanes'
+export function boardHeader(
+  saved: Awaited<ReturnType<typeof readViews>>,
+  update: () => void,
+  snoozed: HTMLButtonElement,
+) {
+  const controls = views(saved, update)
+  const demo = el('mark', 'Demo data')
+  const header = el('header'),
+    hosts = el('div', '', 'chips'),
+    filters = el('div', '', 'chips bot-chips'),
+    updated = button('', () => orca.plugin.request('board.refresh'), 'stamp'),
+    unreachable = el('div', '', 'chips'),
+    lanes = el('main'),
+    message = el('div', '', 'message')
+  let popup: ReturnType<typeof popover> | undefined
+  const filter = button(
+    '',
+    () => {
+      if (popup?.node.isConnected) {
+        popup.close(true)
+        return
+      }
+      popup = popover(filter)
+      popup.node.append(
+        controls.trigger,
+        controls.needs,
+        snoozed,
+        controls.repos,
+        el('div', 'Computers', 'mlabel'),
+        hosts,
+      )
+      popup.position()
+    },
+    'ico',
+  )
+  filter.append(icon('M3 5h18M6 12h12M10 19h4'))
+  filter.setAttribute('aria-label', 'Filters')
+  updated.setAttribute('aria-label', 'Refresh board')
+  header.append(
+    el('h1', 'Bots board'),
+    demo,
+    el('span', '', 'sep'),
+    filters,
+    unreachable,
+    el('span', '', 'spacer'),
+    updated,
+    filter,
+  )
+  document.body.append(header, message, lanes)
+
+  return {
+    lanes,
+    draw(data: Snapshot, board: Board, trees: Workspace[]) {
+      demo.hidden = !data.demo
+      const selected = board.selected
+      updated.replaceChildren(el('span', '', 'live'), data.itemsAt ? 'Read ' + age(data.itemsAt) : 'Reading…')
+      unreachable.replaceChildren()
+      hosts.replaceChildren(
+        ...board.computers.map((c) => {
+          const chip = el('span', c.name + ' · ' + (c.error ? 'Unreachable' : c.count), 'chip')
+          if (c.error) chip.append(el('small', describeFailure(c.error)))
+          if (c.warning) chip.append(el('small', describeFailure(c.warning)))
+          if (c.error || c.key.startsWith('federated:')) unreachable.append(chip.cloneNode(true))
+          return chip
+        }),
+      )
+      controls.sync([...data.prs.map((p) => p.repo), ...trees.map((w) => w.repo), ...data.merged.map((p) => p.repo)])
+      filters.replaceChildren(
+        ...board.bots
+          .filter((b) => b.count > 0)
+          .map((b) => {
+            const key = botKey(b.computer, b.name)
+            const chip = button(
+              b.name + ' ' + b.count,
+              (e) => {
+                const all = board.bots.filter((b) => b.count > 0).map((b) => botKey(b.computer, b.name))
+                const bots = [...toggleBot(selected, all, key, e.altKey || e.metaKey)]
+                saved.current = { ...saved.current, name: '', bots: bots.length ? bots : 'all' }
+                update()
+              },
+              'chip',
+            )
+            chip.prepend(badge(b.computer, b.name))
+            if (b.warning) chip.append(el('small', describeFailure(b.warning)))
+            chip.setAttribute('aria-pressed', String(!selected.size || selected.has(key)))
+            return chip
+          }),
+      )
+      message.textContent =
+        data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error && !c.warning)
+          ? 'No bots yet. Open Items will appear here when a bot creates one.'
+          : ''
+    },
+  }
+}

@@ -392,27 +392,13 @@ pre {
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before {
+    transition: none !important;
     animation: none !important;
     scroll-behavior: auto !important;
   }
 }
 :root {
   --merged: var(--in_progress);
-}
-.drop-prompt {
-  display: none;
-}
-.drag-pr .lane:not([data-key='merged']) {
-  opacity: 0.35;
-}
-.drag-pr [data-key='merged'] {
-  outline: 2px dashed var(--merged);
-}
-.drag-pr .drop-prompt {
-  display: block;
-  padding: 20px;
-  text-align: center;
-  color: var(--merged);
 }
 .merged-card {
   display: block;
@@ -535,28 +521,6 @@ select {
 .sleeping {
   opacity: 0.7;
 }
-.dock:not([hidden]) {
-  position: fixed;
-  bottom: 18px;
-  align-self: center;
-  display: flex;
-  gap: 10px;
-  padding: 10px;
-  border-radius: var(--r);
-  background: var(--card);
-  box-shadow: var(--shadow);
-}
-.dock > div {
-  padding: 10px 24px;
-  border: 1px dashed var(--line);
-  border-radius: var(--r);
-}
-.drag-item [data-key='planned'][hidden] {
-  display: block !important;
-}
-.drag-item .lane:not([data-key='merged'], [data-key='prs']) {
-  outline: 1px dashed var(--tone);
-}
 
 header {
   overflow-x: auto;
@@ -647,10 +611,6 @@ dialog button {
 .merge-dialog {
   background: var(--lane);
 }
-.dock:not([hidden]) {
-  background: var(--raise);
-  border-radius: 12px;
-}
 .merged-card + .merged-card {
   box-shadow: inset 0 1px var(--line);
 }
@@ -660,24 +620,6 @@ dialog button {
   white-space: nowrap;
 }
 
-@media (min-width: 1100px) {
-  body {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
-  }
-  nav {
-    padding-left: 0;
-  }
-  body > .message,
-  main {
-    grid-column: 1 / -1;
-  }
-  .dock:not([hidden]) {
-    left: 50%;
-    transform: translateX(-50%);
-  }
-}
 .more::after {
   content: '';
   width: 14px;
@@ -719,19 +661,6 @@ mark.draft {
   letter-spacing: 0.05em;
   color: var(--faint);
 }
-.dock > div {
-  border: 0;
-  background: var(--card);
-  border-radius: 6px;
-}
-.dock > div:first-child {
-  color: var(--run);
-  background: var(--run-soft);
-}
-.dock > div:last-child {
-  color: var(--bad);
-  background: var(--bad-soft);
-}
 .option {
   background: var(--needs-soft);
   color: var(--fg);
@@ -765,4 +694,360 @@ dialog section summary {
   color: var(--dim);
   padding: 7px 0;
   background: transparent;
+}
+
+:root {
+  --closed: var(--faint);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+body > header {
+  overflow: visible;
+  gap: 7px;
+}
+header .chips {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.bot-chips {
+  display: contents;
+}
+.sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+}
+.spacer {
+  flex: 1;
+}
+.stamp,
+.ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border-radius: 13px;
+  gap: 6px;
+  color: var(--dim);
+  background: transparent;
+  font-size: 12px;
+}
+.live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--run);
+}
+.ico {
+  width: 26px;
+  padding: 0;
+  background: var(--lane);
+}
+.ico svg,
+.bell svg,
+.dv svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+}
+.lane,
+.lane[data-key='merged'] {
+  min-width: 0;
+  width: 262px;
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  transition:
+    width 0.28s var(--ease),
+    background 0.2s,
+    opacity 0.25s ease;
+}
+.lane > h2 {
+  cursor: pointer;
+  padding: 10px 10px 6px;
+  gap: 7px;
+  min-height: 38px;
+  letter-spacing: 0.03em;
+  font-size: 11.5px;
+}
+.lane h2 b {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lane h2 b span {
+  display: inline-block;
+  transform-origin: 0 0;
+  transition: transform 0.32s var(--ease);
+  font: inherit;
+  color: inherit;
+}
+.lane h2:focus-visible {
+  outline-offset: -2px;
+}
+.lane h2:hover {
+  background: color-mix(in srgb, var(--tone) 7%, transparent);
+}
+.fold {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  transition: transform 0.28s var(--ease);
+}
+.lane h2 .fold {
+  font: 18px var(--sans);
+}
+.railav {
+  display: none;
+}
+.lane.rail {
+  width: 40px;
+  opacity: 0.45;
+}
+.rail:hover,
+.rail:focus-within {
+  opacity: 1;
+}
+.rail > h2 {
+  height: 100%;
+  flex-direction: column;
+  padding: 10px 0;
+  gap: 10px;
+}
+.rail h2 b {
+  position: relative;
+  width: 14px;
+  height: 100px;
+}
+.rail h2 b span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translateX(14px) rotate(90deg);
+}
+.rail .fold {
+  margin: 0;
+  transform: rotate(180deg);
+}
+.rail .railav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rail .list {
+  display: none;
+}
+.divider {
+  position: relative;
+  flex: none;
+  background: linear-gradient(var(--line), var(--line)) center/1px 100% no-repeat;
+  width: 22px;
+  margin: 4px 0;
+}
+.dv {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  padding: 4px 0;
+  color: var(--pr);
+}
+.dv i {
+  font-style: normal;
+  writing-mode: vertical-rl;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.split {
+  position: absolute;
+  inset: 38px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(0.97);
+  transition:
+    opacity 0.2s,
+    transform 0.2s var(--ease),
+    visibility 0s 0.2s;
+}
+.target .split {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  transition-delay: 0s;
+}
+.target .list {
+  opacity: 0;
+}
+.zone {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  border-radius: 8px;
+  --z: var(--ok);
+  background: color-mix(in srgb, var(--z) 12%, var(--lane));
+  color: var(--z);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--z) 35%, transparent);
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+.zone:last-child {
+  --z: var(--bad);
+}
+.zone.over {
+  background: color-mix(in srgb, var(--z) 24%, var(--lane));
+  transform: scale(1.04);
+}
+.menu {
+  position: fixed;
+  width: min(230px, calc(100vw - 8px));
+  max-height: calc(100vh - 8px);
+  overflow: auto;
+  background: var(--raise);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+  z-index: 40;
+  animation: pop 0.12s ease-out;
+}
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 5px;
+  text-align: left;
+  background: transparent;
+}
+.menu button:hover,
+.menu button:focus-visible {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.menu .chips {
+  flex-wrap: wrap;
+}
+.k {
+  margin-left: auto;
+  font: 10.5px var(--mono);
+  color: var(--faint);
+}
+.menu hr {
+  border: 0;
+  height: 1px;
+  background: var(--line);
+  margin: 4px 2px;
+}
+.mlabel {
+  font-size: 11px;
+  color: var(--faint);
+  padding: 4px 8px 2px;
+}
+.submenu {
+  width: 180px;
+}
+.bell {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--dim);
+  background: transparent;
+  opacity: 0;
+}
+article:hover .bell,
+article:focus-within .bell,
+.bell[aria-pressed='true'],
+.more[aria-expanded='true'] {
+  opacity: 1;
+}
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 0 18px;
+  animation: appear 0.35s both;
+}
+.empty svg {
+  width: 56px;
+  height: 56px;
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+  background: color-mix(in srgb, var(--tone) 9%, transparent);
+  border-radius: 50%;
+}
+.empty path {
+  stroke-dasharray: 140;
+  animation: draw 1s 0.15s ease-out backwards;
+}
+@keyframes draw {
+  from {
+    stroke-dashoffset: 140;
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.fresh {
+  animation: cardIn 0.42s var(--ease) both;
+}
+@keyframes cardIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+    box-shadow: inset 0 0 0 1.5px var(--tone);
+  }
+  60% {
+    box-shadow: inset 0 0 0 1.5px var(--tone);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.leaving {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2;
+  animation: cardOut 0.2s ease-in forwards;
+}
+@keyframes cardOut {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+#notice:not(:empty) {
+  animation: toastIn 0.25s var(--ease);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }

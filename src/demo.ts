@@ -119,7 +119,7 @@ export function demoBoard(state: string | null = null) {
       },
     },
     merged: [],
-    mergedError: null,
+    banner: null,
     total: 2,
     prsAt: Date.now(),
     itemsAt: Date.now(),
@@ -156,8 +156,8 @@ export function demoBoard(state: string | null = null) {
       'Track rainfall across the north field',
       'Sort field stations by distance',
     ]
-    for (let i = 0; i < (state === 'queue50' ? 50 : titles.length); i++) {
-      const number = 10 + i,
+    for (let i = 0; i < (state === 'large' ? 120 : state === 'queue50' ? 50 : titles.length); i++) {
+      const number = (state === 'large' ? 200 : 10) + i,
         head = 'station-' + number
       const title = titles[i] ?? 'Update readings for plot ' + (i + 1)
       data.prs.push({
@@ -191,6 +191,23 @@ export function demoBoard(state: string | null = null) {
         url: pr.url.replace(/1$/, String(100 + i)),
         mergedAt: new Date().toISOString(),
       })
+    if (state === 'large') {
+      const roster = data.computers[0]!.source
+      if (roster.ok) {
+        for (let i = 0; i < 30; i++)
+          roster.value.bots.push({ ...list[0]!, name: 'Field bot ' + (i + 1), id: 'field-' + i })
+        roster.value.workspaces.push({
+          computer: 'local',
+          id: 'history',
+          name: 'history',
+          bot: 'Field bot 30',
+          repo: pr.repo,
+          branch: 'merged-survey',
+          home: null,
+        })
+        data.merged[0]!.head = 'merged-survey'
+      }
+    }
     data.total = data.prs.length
     data.merged.push({
       ...pr,
@@ -234,6 +251,7 @@ export function demoBoard(state: string | null = null) {
     data.prs = []
     data.prsAt = 0
     data.total = 0
+    data.banner = 'GitHub is signed out. Run gh auth login and refresh.'
     data.error = {
       ok: false,
       command: 'gh api user',

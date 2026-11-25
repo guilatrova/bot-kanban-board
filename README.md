@@ -2,75 +2,74 @@
 
 # Bot Kanban Board
 
-## What it does
+See your Orca bots’ Items alongside the GitHub pull requests they are working on, across this computer and its paired computers.
 
-See your bots’ Items across this computer and its paired computers alongside open GitHub pull requests. The board links related work by branch, Item reference or closing issue.
+## Install and first run
 
-## How to use
+Install **Bot Kanban Board** from the Orca desktop plugin page (macOS or Linux, Orca 1.4.274 or later). For a local checkout, run `orca plugin install . --json` and follow its approval instructions. Install the Orca and GitHub CLIs, sign in to GitHub with `gh auth login`, and make sure the Orca desktop session can see your bots.
 
-- Install **Bot Kanban Board** from Orca’s plugin page. For live data, install the Orca and GitHub CLIs and sign in with `gh auth login`.
-- Click **Needs you** in the status bar or choose **Open Bot Kanban Board** in the command palette. Both open or focus the board at the Needs you column.
-- Orca displays a plugin’s full-page view as the editor for a file type. The plugin creates and opens **Board.botkanban** for you.
-- **Waiting** includes waiting and planned Items. **Needs you** lists questions, oldest first. **In progress** shows active work. **Closed** lists Items completed or cancelled today.
-- **Pull requests** groups ready, draft and unassigned work. Click a card to inspect its files and diff. **Merged** shows today’s merges in local time, newest first. Click a merged card to open it on GitHub.
-- Click a pull request and choose **Merge**, or drag it onto the **Merge** zone in Merged. Confirm the method after reading any warnings. A draft is marked ready first. Follow progress in the toast while you keep working. To close without merging, drop onto **Close PR** and confirm.
-- Open the settings gear to choose a default merge method. Turn off **Ask before merging** to skip confirmation for clean pull requests. Warnings, conflicts, stack dependencies and unavailable methods still open the dialog.
-- Turn on **Demo data** in Orca’s plugin settings and restart the plugin to explore a synthetic board. Demo merges affect only the sample data.
+Choose **Open Bot Kanban Board** from the command palette or click **Needs you** in the status bar. The plugin creates and opens a **Board.botkanban** editor in a hidden utility project. To explore without live data, enable **Demo data** in Orca’s plugin settings and restart the plugin. On a demo-only first run, follow the setup message to add the board folder.
 
-## Organize the board
+## Read the columns
 
-Use the bot chips, **Repositories**, and **Needs me only** to filter the board. **Needs me only** includes Items in Needs you and open, non-draft pull requests. Items without a known repository stay visible under repository filters. The board uses a matched PR or a workspace linked to an Item’s worker when it can identify the repository. Bot chips leave Merged and No bot rows visible. Alt-click or Cmd-click a chip to show just that bot’s assigned work.
+- **Waiting** holds waiting and planned Items. **Needs you** shows questions, oldest first. **In progress** shows active work.
+- **Closed** contains Items completed or canceled today. Click a lane heading to expand or fold it.
+- **Pull requests** groups ready, draft and unassigned PRs. Open a card for its files, diff and merge details. Stacks show the base PR before its dependents.
+- **Merged** shows today’s merges in local time, newest first. Use the PR link to open GitHub.
 
-Open the filter menu to see saved views, filters, snoozed Items and computer status. Select **View** to save the current filters, switch views, rename a saved view or delete it. The board restores your last selection when you reopen it.
+## Work on the board
 
-Click any column header to fold or expand it. Waiting includes Planned Items. Closed shows Items completed or cancelled today. Drag an Item to a status column, or choose **Completed** or **Cancelled** in the Closed column. Right-click or select **More** for status requests, snooze and chat. You can also request a status from the Item drawer. Cancel requires a reason. Copy the prepared message, select **Open bot chat in Orca**, and paste the request in the bot’s chat. The card stays in its current column until Orca reports the change. An unconfirmed request expires after ten minutes.
+Click a bot chip to hide or show its cards. Right-click, Option-click or Command-click to show that bot alone, including its mapped merges and Closed Items. Repeat the gesture to show everyone. A bot with only history today can have a chip with a count of zero. Use **Filters** for repository filters, **Needs me only**, saved views, snoozed Items and computer status.
 
-Snoozing hides an Item locally for one hour, until tomorrow at 9 a.m., or until Monday at 9 a.m. (local time). Open **Snoozed** to wake it early. Orca’s own snoozes are labeled separately and expire at the time Orca sets. Stacked PRs name their open base PR on the card and in the drawer. The merge dialog warns when that base is still open.
+Open a PR and choose **Merge**, or drag it onto the merge zone. To close it without merging, drag it onto **Close PR** and confirm. For a batch, use a PR’s checkbox or drag a rectangle from empty board space. Shift or Command adds to your selection. Escape clears it. Choose **Merge all** or drag the selected PRs together to start the queue.
 
-Select an open card’s bell to receive one notification when its Item changes status or its pull request is ready to merge. Orca’s plugin worker must be running.
-
-## Install
-
-Use Orca desktop 1.4.274 or later on macOS or Linux. Install the Orca CLI and GitHub CLI, then sign in with `gh auth login`. From a local checkout, run `orca plugin install . --json` (or `orca plugin dev load . --json` for development). Review the requested permissions and follow the approval command Orca prints. Open the board from your own desktop session.
-
-## What it reads and where it sends it
-
-The trusted worker runs Node.js with your account’s access. Live mode invokes the Orca and GitHub CLIs, reads available bot avatars on their owning computers and maintains a board file in the application data directory.
-
-- `storage:own` persists filters, named views, requested moves, local snoozes, folded columns and bells.
-- `notifications:show` delivers one-shot bell notifications through Orca.
-- `settings:own` reads executable paths, polling intervals and the demo setting.
-- `workspace:read` locates board and bot workspaces.
-- `workspace:write` opens the board editor and bot workspaces and hides the board’s utility project.
-- `agent:read` subscribes to agent status changes to refresh Items.
+Use an open card’s bell to receive one notification when an Item changes status or a PR is ready to merge. Item bells need the worker running. PR bells are checked while the board is visible and when you return to it. Use an Item’s **More** menu for snooze, chat and status requests. Status changes are prepared as messages for you to paste into the bot’s chat. An unconfirmed request expires after ten minutes.
 
 ## Settings
 
-| Setting                       | Default                                |
-| ----------------------------- | -------------------------------------- |
-| Orca executable path          | Search PATH and platform CLI locations |
-| GitHub CLI executable path    | Search PATH and platform CLI locations |
-| Item refresh interval         | 30 seconds                             |
-| Pull request refresh interval | 90 seconds                             |
+Open the gear to change the board’s saved preferences.
 
-**Demo data** defaults to off. Change it in the plugin settings, restart the plugin, and reopen the board. The demo worker uses synthetic records, runs no CLI commands and keeps its views and actions separate. Both modes open the same hidden board project in the application data directory. On a demo-only first run, add the folder shown by the setup message as an Orca folder project, then reopen the board.
+- **Display** turns compact cards on or off. Compact Items and PRs show a photo, one-line title, age and a tag for drafts. Hover for the full title and bot.
+- **Merging** preselects Squash, Merge or Rebase. Turn off **Ask before merging** for one-step merges of clean PRs. Warnings and conflicts still open the dialog.
+- **After a merge** sends one Orca message to the selected bot after a merge or a batch. Turn on **Tell a bot** to choose a recipient.
 
-**Refresh** reads both sources immediately. A GitHub failure keeps the last successful pull request list with its age.
+Orca’s plugin settings also control executable paths, refresh intervals and demo mode. Item reads default to 30 seconds and PR reads to 90 seconds. Click the read timestamp for a manual refresh.
 
-## Known limits
+## Troubleshooting
 
-- Orca limits Item status writes to the bot’s own chat. The board prepares a message for the owner to send. Snooze affects this board only. Answer questions in Orca. [Upstream owner API request](https://github.com/stablyai/orca/issues/48010).
+- **GitHub unavailable.** The board keeps the previous data and reports the retry time. On first load, use **Try again** to read immediately. For an authentication error, sign in with `gh auth login` in your desktop account. For a missing executable, set the GitHub CLI path in Orca’s plugin settings.
+- **Rate limit reached.** Wait for the time shown. The worker uses GitHub’s reset or retry header when available and otherwise waits six minutes.
+- **A remote bot is missing.** Check the computer status in Filters and reconnect the paired computer. A remote photo read briefly opens a terminal in the bot’s workspace. Initials appear until a verified photo is available.
+- **A bot session cannot read live data.** Open the board from your own desktop session.
+- **A PR or patch is missing.** Open-PR search stops after five pages of 40, and merged search reads the first 40 results. The files API returns up to 3,000 files. Large or binary files may have no patch. Follow the GitHub link in the drawer for the full change.
 
-- Merged history reads the first 40 GitHub search results sorted by update time. Merge queues require continuing on GitHub. After merging, tell the owning bot in Orca.
+## How it works
 
-- GitHub search reads up to five pages of 40 open pull requests. The board shows the open total. The PR files API returns up to 3,000 files. When fewer files arrive than the reported number of changes, the drawer shows both counts and a GitHub files link. Binary and large files can have no patch.
-- A remote photo read briefly opens a terminal tab in the bot’s workspace on its paired computer. The worker checks the digest on the first photo request after startup and at most once every six hours afterward. A failed check keeps the last verified photo. Initials appear if no verified photo is available. Local photos are read directly from disk.
-- Orca opens a bot's workspace. Select the original chat there to answer. The bot deep link is a fallback when the folder workspace cannot be opened.
-- Desktop operation and paired-computer jumps still need an end-to-end run on a Mac. The CLI runner detects inherited bot-session context and directs the operator to open the board from the desktop as themselves.
+```text
+The worker discovers local and paired Orca bots. It reads orca bot item list
+and orca bot work list per bot, and orca worktree ps per computer.
+GitHub GraphQL searches read open PRs and today's merges in the login's repositories.
 
-## How it is built
+A PR matches an Item that mentions its PR URL or repo#number. Otherwise the
+board matches issues referenced by that PR to Items. A matching head branch
+and repository also associate a PR with the bot that owns the workspace.
 
-`src/core/` owns board grouping, PR matching, stack order and merge assessment. The worker in `src/worker/` reads Orca and GitHub and sends requested actions to their respective services. The editor in `editor/` renders snapshots and stores preferences in Orca plugin storage.
+The queue processes PRs sequentially, rechecks each PR, asks about warnings,
+marks drafts ready and merges the confirmed head SHA with the chosen method.
+Failed entries retry twice and can then be retried manually. The optional
+post-merge message uses terminal.create (orca terminal create) in the chosen
+bot's workspace to run orca orchestration send. A batch sends one summary.
+
+Items refresh every 30 seconds by default and after agent status changes.
+Visible panels poll GitHub every 90 seconds by default and refresh on return.
+Failed reads back off to 90 seconds, 3 minutes, then 6 minutes. Rate limits
+wait for the reported reset or retry time, or 6 minutes without headers.
+The worker caches the login for the session and repository facts for 6 hours.
+
+Plugin storage holds views and filters, folded lanes, bells, pending status
+requests, local snoozes, avatar data and merge/display preferences. Current
+PR snapshots and the GitHub lookup caches live in worker memory.
+```
 
 ## Develop
 

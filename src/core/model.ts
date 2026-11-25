@@ -1,4 +1,12 @@
-export type Failure = { ok: false; command: string; message: string; next: string }
+export type Failure = {
+  status?: number
+  resetAt?: number
+  rateLimited?: boolean
+  ok: false
+  command: string
+  message: string
+  next: string
+}
 export type Source<T> = { ok: true; value: T } | Failure
 export const statuses = ['planned', 'needs_you', 'in_progress', 'waiting'] as const
 export type Status = (typeof statuses)[number] | 'done' | 'canceled'

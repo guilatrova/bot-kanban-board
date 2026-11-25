@@ -190,6 +190,15 @@ export function items(
       ]
     })
 }
+export function mappingFields(p: ReturnType<typeof obj>) {
+  return {
+    head: str(p, 'headRefName'),
+    body: str(p, 'body'),
+    closes: rows(obj(p.closingIssuesReferences).nodes)
+      .map(obj)
+      .map((r) => ({ number: num(r, 'number'), repo: str(obj(r.repository), 'nameWithOwner') })),
+  }
+}
 export function pullRequest(input: unknown): PullRequest {
   const p = obj(input)
   if (typeof p.isDraft !== 'boolean') throw Error('Missing isDraft')
@@ -203,18 +212,15 @@ export function pullRequest(input: unknown): PullRequest {
     draft: p.isDraft,
     crossRepository: p.isCrossRepository,
     sha: opt(p.headRefOid) ?? undefined,
-    head: str(p, 'headRefName'),
+    ...mappingFields(p),
     base: str(p, 'baseRefName'),
-    body: str(p, 'body'),
+
     updated: str(p, 'updatedAt'),
     additions: num(p, 'additions'),
     deletions: num(p, 'deletions'),
     files: num(p, 'changedFiles'),
     mergeable: str(p, 'mergeable'),
     checks: commit ? opt(nested(obj(obj(commit).commit).statusCheckRollup).state) : null,
-    closes: rows(obj(p.closingIssuesReferences).nodes)
-      .map(obj)
-      .map((r) => ({ number: num(r, 'number'), repo: str(obj(r.repository), 'nameWithOwner') })),
   }
 }
 export function fileChange(value: unknown): FileChange {

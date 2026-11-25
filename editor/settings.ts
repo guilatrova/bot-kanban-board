@@ -1,6 +1,7 @@
-import { mergeMethods, methodLabels, type MergeMethod, type MergePreferences } from '../src/core/merge'
+import { version } from '../package.json'
+import { mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
 import { botKey, type Computer } from '../src/core/model'
-import { button, el, external, notice } from './dom'
+import { badge, button, el, external, notice } from './dom'
 import { icon } from './lanes'
 import { popover } from './popover'
 export async function readMergeSettings(demo: boolean) {
@@ -9,11 +10,13 @@ export async function readMergeSettings(demo: boolean) {
   const prefs: MergePreferences = {
     mergeMethod: 'squash',
     askBeforeMerging: true,
+    compact: false,
     tellBot: false,
     botName: '',
     computer: 'local',
   }
   if (state && typeof state === 'object' && !Array.isArray(state)) {
+    prefs.compact = state.compact === true
     prefs.tellBot = state.tellBot === true
     prefs.botName = typeof state.botName === 'string' ? state.botName : ''
     prefs.computer = typeof state.computer === 'string' ? state.computer : 'local'
@@ -35,69 +38,161 @@ export function settings(saved: MergePreferences, update: () => void, computers:
       if (menu?.node.isConnected) return menu.close(true)
       menu = popover(gear)
       menu.node.classList.add('settings')
-      function row(name: string, hint: string, control: HTMLElement) {
-        const label = el('label', '', 'set-row'),
-          text = el('span', '', 'set-text')
-        text.append(el('span', name), el('small', hint))
-        label.append(text, control)
-        return label
+      const panel = menu
+      const head = el('div', '', 'ph')
+      const close = button('✕', () => panel.close(true), 'x')
+      close.setAttribute('aria-label', 'Close settings')
+      head.append(el('b', 'Settings'), close)
+      panel.node.append(head)
+      const group = (title: string) => {
+        const sec = el('section', '', 'sec'),
+          block = el('div', '', 'grp')
+        sec.append(el('h4', title), block)
+        panel.node.append(sec)
+        return block
       }
-      const select = el('select')
-      for (const m of mergeMethods) select.add(new Option(methodLabels[m], m, false, m === saved.mergeMethod))
-      select.onchange = () => {
-        saved.mergeMethod = select.value as MergeMethod
-        update()
+      const row = (name: string, hint: string, control: HTMLElement, toggle = false) => {
+        const line = el(toggle ? 'label' : 'div', '', toggle ? 'set tg' : 'set')
+        const tx = el('div', '', 'tx')
+        tx.append(el('div', name))
+        if (hint) tx.append(el('small', hint))
+        line.append(tx, control)
+        return line
       }
-      const ask = el('input', '', 'switch')
-      ask.type = 'checkbox'
-      ask.checked = saved.askBeforeMerging
-      ask.onchange = () => {
-        saved.askBeforeMerging = ask.checked
-        update()
+      const toggle = (
+        key: 'compact' | 'askBeforeMerging' | 'tellBot',
+        name: string,
+        hint: string,
+        changed?: () => void,
+      ) => {
+        const input = el('input', '', 'sw')
+        input.type = 'checkbox'
+        input.setAttribute('role', 'switch')
+        input.checked = saved[key]
+        input.onchange = () => {
+          saved[key] = input.checked
+          changed?.()
+          update()
+        }
+        return row(name, hint, input, true)
       }
-      const tell = el('input', '', 'switch after-switch'),
-        bots = el('select')
-      tell.type = 'checkbox'
-      tell.checked = saved.tellBot
-      bots.add(new Option('Choose a bot', ''))
-      for (const c of computers())
-        if (c.source.ok)
-          for (const b of c.source.value.bots) {
-            bots.add(new Option(b.name + (c.key === 'local' ? '' : ' · ' + c.name), botKey(c.key, b.name)))
+      group('Display').append(toggle('compact', 'Compact cards', 'One line per card: bot, title, age.'))
+      const merging = group('Merging'),
+        segment = el('div', '', 'segc'),
+        thumb = el('span', '', 'thumb')
+      segment.append(thumb)
+      const syncMethod = () => {
+        for (const b of segment.querySelectorAll('button')) {
+          const active = b.value === saved.mergeMethod
+          b.setAttribute('aria-pressed', String(active))
+          if (active) {
+            thumb.style.left = b.offsetLeft + 'px'
+            thumb.style.width = b.offsetWidth + 'px'
           }
-      bots.value = botKey(saved.computer, saved.botName)
-      if (bots.selectedIndex < 0) bots.selectedIndex = 0
-      bots.disabled = !tell.checked
-      bots.onchange = () => {
-        const choice = bots.value ? (JSON.parse(bots.value) as [string, string]) : ['local', '']
-        saved.computer = choice[0]!
-        saved.botName = choice[1]!
-        update()
+        }
       }
-      tell.onchange = () => {
-        saved.tellBot = tell.checked
-        bots.disabled = !tell.checked
-        update()
+      for (const m of mergeMethods) {
+        const b = button(shortMethodLabels[m], () => {
+          saved.mergeMethod = m
+          syncMethod()
+          update()
+        })
+        b.value = m
+        segment.append(b)
       }
-      const credit = external('Who created this?', 'https://github.com/guilatrova')
-      credit.className = 'credit'
-      menu.node.append(
-        el('div', 'Settings', 'set-title'),
-        el('div', 'Merging', 'mlabel'),
-        row('Merge method', 'Preselected in the merge dialog.', select),
-        row(
+      merging.append(
+        row('Merge method', 'Preselected in the merge dialog.', segment),
+        toggle(
+          'askBeforeMerging',
           'Ask before merging',
           'Off: clean pull requests merge in one step. Warnings and conflicts always ask.',
-          ask,
         ),
-        el('hr'),
-        el('div', 'After a merge', 'mlabel'),
-        row('Tell a bot', 'One Orca message per merge, or one for a whole batch', tell),
-        row('Which bot', '', bots),
-        el('hr'),
-        credit,
       )
-      menu.position(false)
+      const after = group('After a merge'),
+        reveal = el('div', '', 'reveal'),
+        wrap = el('div')
+      let list: ReturnType<typeof popover> | undefined
+      const show = () => {
+        reveal.classList.toggle('on', saved.tellBot)
+        reveal.inert = !saved.tellBot
+        list?.close()
+      }
+      after.append(
+        toggle('tellBot', 'Tell a bot', 'One Orca message per merge, or one for a whole batch.', show),
+        reveal,
+      )
+      const choices = computers().flatMap((c) =>
+        c.source.ok
+          ? c.source.value.bots.map((b) => ({
+              key: botKey(c.key, b.name),
+              computer: c.key,
+              name: b.name,
+              label: b.name + (c.key === 'local' ? '' : ' · ' + c.name),
+            }))
+          : [],
+      )
+      const picker = button(
+        '',
+        () => {
+          if (list?.node.isConnected) return list.close(true)
+          list = popover(picker, true)
+          list.node.classList.add('bpl')
+          list.node.setAttribute('role', 'listbox')
+          for (const choice of choices) {
+            const option = button(
+              '',
+              () => {
+                saved.computer = choice.computer
+                saved.botName = choice.name
+                paint()
+                list?.close(true)
+                update()
+              },
+              'bpo',
+            )
+            option.setAttribute('role', 'option')
+            option.setAttribute('aria-selected', String(choice.key === botKey(saved.computer, saved.botName)))
+            option.append(badge(choice.computer, choice.name), choice.label, el('span', '✓', 'ck'))
+            list.node.append(option)
+          }
+          positionPicker()
+          ;(list.node.querySelector<HTMLElement>('[aria-selected=true]') ?? list.node.querySelector('button'))?.focus({
+            preventScroll: true,
+          })
+        },
+        'bpb',
+      )
+      function positionPicker() {
+        if (!list?.node.isConnected) return
+        const r = picker.getBoundingClientRect(),
+          below = innerHeight - r.bottom,
+          above = r.top,
+          up = above > below
+        list.node.style.maxHeight = Math.max(0, (up ? above : below) - 16) + 'px'
+        list.node.style.left =
+          Math.max(8, Math.min(r.right - list.node.offsetWidth, innerWidth - list.node.offsetWidth - 8)) + 'px'
+        list.node.style.top = (up ? r.top - list.node.offsetHeight - 4 : r.bottom + 4) + 'px'
+      }
+      picker.setAttribute('aria-haspopup', 'listbox')
+      function paint() {
+        const choice = choices.find((c) => c.key === botKey(saved.computer, saved.botName))
+        picker.replaceChildren(...(choice ? [badge(choice.computer, choice.name), choice.label] : ['Choose a bot']))
+      }
+      paint()
+      show()
+      wrap.append(row('Which bot', '', picker))
+      reveal.append(wrap)
+      panel.node.onscroll = positionPicker
+      panel.node.addEventListener('dismiss', () => list?.close())
+      const footer = el('div', '', 'pf')
+      footer.append(
+        el('span', 'Bot Kanban Board ' + version),
+        external('Who created this?', 'https://github.com/guilatrova'),
+      )
+      panel.node.append(footer)
+      panel.position()
+      panel.node.style.left = 'auto'
+      syncMethod()
     },
     'ico',
   )

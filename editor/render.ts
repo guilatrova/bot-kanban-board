@@ -4,13 +4,13 @@ import { land, mergedRow } from './merge-landing'
 import { dropZones } from './drop-zones'
 import { selection, buildDeck } from './selection'
 import { mergeQueue } from './merge-queue'
-import { checksLabel, type MergedPr } from '../src/core/merge'
-import { countLabel } from './pr-labels'
+import { type MergedPr } from '../src/core/merge'
+import { prStats } from './pr-labels'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { patch, el, button, age, badge, prPill, describeFailure, notice, labels } from './dom'
+import { patch, el, button, age, badge, prPill, notice, labels } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
@@ -36,7 +36,14 @@ export function view(
   const actions = itemActions(store, redraw)
   let sleeping: Item[] = []
   const snoozed = button('Snoozed 0', () => actions.showList(sleeping), 'chip')
-  const gear = settings(prefs, save, () => snapshot?.computers ?? [])
+  const gear = settings(
+    prefs,
+    () => {
+      save()
+      redraw()
+    },
+    () => snapshot?.computers ?? [],
+  )
   const header = boardHeader(saved, update, snoozed, gear)
   const { lanes } = header
   const confirm = mergeDialog(prefs, save)
@@ -78,12 +85,11 @@ export function view(
   const zones = dropZones(columns, queue.panel, actions.move, start, (pr) => confirm(pr, undefined, true))
   for (const key of laneKeys) {
     const col = makeLane(key, collapsed, () => orca.storage.set('collapsed', [...collapsed]))
-    const { lane, list } = col
+    const { lane } = col
     if (key === 'prs') lanes.append(divider())
     lanes.append(lane)
     columns.set(key, col)
     zones.attach(key, lane)
-    for (let n = 0; n < 3; n++) list.append(el('div', '', 'skeleton'))
   }
   const cards = new Map<string, HTMLElement>(),
     signatures = new Map<string, string>()
@@ -93,8 +99,7 @@ export function view(
     summary = el('summary'),
     unmapped = el('div')
   group.append(summary, unmapped)
-  const drafts = el('h3', 'Draft'),
-    prError = el('p')
+  const drafts = el('h3', 'Draft')
   function focus() {
     const heading = columns.get('needs_you')?.lane.querySelector('h2')
     if (heading?.getAttribute('aria-expanded') === 'false') heading.click()
@@ -162,6 +167,7 @@ export function view(
         row,
         merging,
         ringing,
+        prefs.compact,
         data.notificationsOff,
         links.map((l) => ('status' in l ? itemKey(l) : prKey(l))),
         age(row.updated),
@@ -173,7 +179,7 @@ export function view(
         node.oncontextmenu = (e) => {
           e.preventDefault()
           const anchor = element.querySelector<HTMLElement>('.more')
-          if (anchor) actions.menu(row, anchor)
+          if (!closed) actions.menu(row, anchor ?? element)
         }
         node.ondragstart = (e) => {
           zones.item(row)
@@ -206,6 +212,17 @@ export function view(
         signatures.set(key, signature)
         node.replaceChildren()
         const by = isItem ? row : (row.items[0] ?? row.workspaces[0])
+        node.classList.toggle('compact-card', prefs.compact)
+        node.title = prefs.compact ? (by?.bot ?? 'No bot') + ' · ' + row.title : ''
+        if (prefs.compact) {
+          node.append(
+            by ? badge(by.computer, by.bot) : el('span', '—', 'avatar'),
+            el('span', row.title, 'compact-title'),
+          )
+          if (!isItem && row.draft) node.append(el('span', 'Draft', 'compact-draft'))
+          node.append(el('time', age(row.updated)))
+          return node
+        }
         const meta = el('div', '', 'meta')
         if (by) meta.append(badge(by.computer, by.bot))
         meta.append(
@@ -261,16 +278,7 @@ export function view(
           const active = row.workers.find((w) => w.state === 'working')
           if (active) node.append(el('mark', '● ' + active.title, 'running'))
           if (row.chat) node.append(el('small', row.chat))
-        } else
-          node.append(
-            merging ? el('mark', 'Merging…', 'ready') : prPill(row),
-            el(
-              'small',
-              ['+' + row.additions + ' −' + row.deletions, countLabel(row.files, 'file'), checksLabel(row.checks)]
-                .filter(Boolean)
-                .join(' · '),
-            ),
-          )
+        } else node.append(merging ? el('mark', 'Merging…', 'ready') : prPill(row), el('small', prStats(row)))
         if (!isItem && row.behind) node.append(el('p', 'Behind ' + row.behind))
         for (const link of links) {
           const item = 'status' in link,
@@ -301,12 +309,6 @@ export function view(
           prs.length,
           prs.flatMap((p) => [...p.items, ...p.workspaces]),
         )
-        if (data.error) {
-          prError.textContent = [describeFailure(data.error), data.prsAt ? 'Last read ' + age(data.prsAt) : '']
-            .filter(Boolean)
-            .join(' · ')
-          nodes.push(prError)
-        }
         // Keep the familiar groups unless they place a base after its dependent.
         const positions = new Map(prs.map((pr, index) => [prKey(pr), index]))
         const splitStack = prs.some((pr, index) => pr.behind && (positions.get(pr.behind) ?? -1) > index)
@@ -325,8 +327,6 @@ export function view(
         }
       } else if (key === 'merged') {
         col.update(board.merged.length, [])
-        const error = data.error || data.mergedError
-        if (error) nodes.push(el('p', describeFailure(error)))
         for (const row of board.merged) {
           const key = 'merged:' + prKey(row)
           alive.add(key)

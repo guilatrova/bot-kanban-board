@@ -1,3 +1,5 @@
+import { serveSnapshots } from './snapshot'
+import { retry } from './polling'
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot, Progress } from '../protocol'
 import { prKey } from '../core/model'
@@ -22,7 +24,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         prs: [],
         repos: {},
         merged: [],
-        mergedError: null,
+        banner: null,
         total: 0,
         itemsAt: 0,
         prsAt: 0,
@@ -102,7 +104,20 @@ export default async function activate(orca: OrcaWorkerApi) {
       itemJob = null
     }))
   }
+  const visible = new Set<string>()
+  let timer: ReturnType<typeof setTimeout> | undefined,
+    failures = 0,
+    retryAt = 0,
+    limitedUntil = 0
+  async function planPoll() {
+    const interval = Math.max(10, Number(await orca.settings.get('prSeconds')) || 90) * 1000
+    clearTimeout(timer)
+    if (visible.size && !demo)
+      timer = setTimeout(() => void refreshPrs().catch(report), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
+  }
   function refreshPrs() {
+    if (limitedUntil > Date.now()) return planPoll()
+
     return (prJob ??= (async () => {
       const result = await github(await path('ghPath'))
       if (result.ok) {
@@ -110,7 +125,6 @@ export default async function activate(orca: OrcaWorkerApi) {
         data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
         data.repos = result.value.repos
         const merged = result.value.merged
-        data.mergedError = merged.ok ? null : merged
         const history = merged.ok ? merged.value : data.merged
         data.merged = mergedToday([...landed.values(), ...history.filter((pr) => !landed.has(prKey(pr)))])
         data.total = result.value.total
@@ -120,24 +134,40 @@ export default async function activate(orca: OrcaWorkerApi) {
         const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
         for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
       } else data.error = result
+      const search = result.ok ? result.value.merged : result
+      if (!search.ok) {
+        const next = retry(search, ++failures, Date.now())
+        retryAt = next.at
+        limitedUntil = next.limited ? retryAt : 0
+        data.banner = next.message
+      } else {
+        data.banner = null
+        failures = 0
+        retryAt = 0
+        limitedUntil = 0
+      }
       publish()
-    })().finally(() => {
+    })().finally(async () => {
+      await planPoll()
       prJob = null
     }))
   }
   const refresh = () => Promise.all([refreshItems(), refreshPrs()])
-  const snapshots = new Map<string, string>()
-  orca.panels.handle('board.get', async ({ index, fresh }, context) => {
+  orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id
-    if (index === 0) {
-      if (fresh && !demo) await refresh()
-      snapshots.set(id, JSON.stringify({ ...data, focus: fresh === true }))
+    if (shown) {
+      const first = !visible.size
+      visible.add(id)
+      if (!demo && first && !initial && limitedUntil <= Date.now()) await refreshPrs()
+      else if (!prJob) await planPoll()
+    } else {
+      visible.delete(id)
+      if (!visible.size) clearTimeout(timer)
     }
-    const json = snapshots.get(id)
-    if (!json) throw Error('Snapshot expired. Refresh the board.')
-    const count = Math.ceil(json.length / 32000)
-    if (index + 1 >= count) snapshots.delete(id)
-    return { index, count, data: json.slice(index * 32000, (index + 1) * 32000) }
+    return null
+  })
+  serveSnapshots(orca, data, async () => {
+    if (!demo) await Promise.all([refreshItems(), visible.size && refreshPrs()])
   })
   orca.panels.handle('pr.read', async (input) => {
     const ghPath = await path('ghPath')
@@ -254,10 +284,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         : await mergePr(await path('ghPath'), pr, input, progress, ready)
       if (result.ok) {
         const row = {
-          repo: pr.repo,
-          number: pr.number,
-          title: pr.title,
-          url: pr.url,
+          ...pr,
           mergedAt: new Date().toISOString(),
         }
         recordMerged(row)
@@ -331,5 +358,4 @@ export default async function activate(orca: OrcaWorkerApi) {
     void tick().catch(report)
   }
   schedule('itemsSeconds', 30, refreshItems)
-  schedule('prSeconds', 90, refreshPrs)
 }

@@ -12,6 +12,7 @@ const attempts = new Map<number, number>()
 let failNext = state === 'failure'
 const send = () => handlers.get('board.changed')?.(null)
 const fake = {
+  settings: { get: (key: string) => key === 'demo' },
   storage: {
     get: (k: string) => JSON.parse(sessionStorage.getItem(k) || 'null') as unknown,
     set: async (k: string, v: unknown) => sessionStorage.setItem(k, JSON.stringify(v)),
@@ -21,6 +22,19 @@ const fake = {
     request: async (k: string, input?: { repo: string; number: number; bell: Bell; on: boolean }) => {
       if (k === 'bot.tell') return state !== 'send-failure'
       if (k === 'board.get' && state === 'loading') return new Promise(() => {})
+      if (k === 'board.get' && state === 'first-error' && !attempts.has(-1)) {
+        attempts.set(-1, 1)
+        return {
+          index: 0,
+          count: 1,
+          data: JSON.stringify({
+            ...data,
+            prsAt: 0,
+            banner: 'Can’t reach GitHub (HTTP 502). Trying again in 90 seconds.',
+            error: { ok: false, message: 'HTTP 502', next: '', command: 'gh api' },
+          }),
+        }
+      }
       if (k === 'board.get') return { index: 0, count: 1, data: JSON.stringify(data) }
       if (k === 'pr.read' && input) {
         const pr = stackOrder(data.prs).find((p) => prKey(p) === prKey(input))

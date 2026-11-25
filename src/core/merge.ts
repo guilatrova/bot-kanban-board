@@ -3,10 +3,12 @@ import type { PullRequest, IssueRef } from './model'
 export const mergeMethods = ['squash', 'merge', 'rebase'] as const
 export type MergeMethod = (typeof mergeMethods)[number]
 export const methodLabels = { squash: 'Squash', merge: 'Merge commit', rebase: 'Rebase' }
+export const shortMethodLabels = { ...methodLabels, merge: 'Merge' }
 export type MergePreferences = {
   mergeMethod: MergeMethod
   botName: string
   computer: string
+  compact: boolean
   tellBot: boolean
   askBeforeMerging: boolean
 }
@@ -70,7 +72,7 @@ export function assessMerge(pr: PullRequest, repo: RepositoryFacts) {
   return { canMerge: !blockers.length, blockers, warnings, methods, defaultMethod: methods[0] }
 }
 
-export interface MergedPr extends IssueRef {
+export interface MergedPr extends IssueRef, Partial<Pick<PullRequest, 'head' | 'body' | 'closes'>> {
   title: string
   url: string
   mergedAt: string

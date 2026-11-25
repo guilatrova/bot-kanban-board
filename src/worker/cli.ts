@@ -46,6 +46,7 @@ export async function runCli(
   configured = '',
   format: 'json' | 'text' = 'json',
 ): Promise<Source<unknown>> {
+  const headers = binary === 'gh' && args[0] === 'api' && !args.includes('--paginate')
   const command = commandLabel(binary, args)
   const env = { ...process.env }
   if (sessionKeys.some((key) => key in env)) {
@@ -58,18 +59,38 @@ export async function runCli(
   }
   try {
     const path = await binaryPath(binary, configured)
-    const { stdout } = await execute(path, args, { env, timeout: 45_000, maxBuffer: 64 * 1024 * 1024 })
+    const { stdout } = await execute(path, headers ? [args[0]!, '-i', ...args.slice(1)] : args, {
+      env,
+      timeout: 45_000,
+      maxBuffer: 64 * 1024 * 1024,
+    })
     if (format === 'text') return { ok: true, value: stdout }
-    const json: unknown = JSON.parse(stdout)
+    const json: unknown = JSON.parse(headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout)
     if (binary === 'gh') return { ok: true, value: json }
     if (json && typeof json === 'object' && 'ok' in json && json.ok === true && 'result' in json)
       return { ok: true, value: json.result }
     throw new Error(envelopeMessage(json) || 'Invalid Orca response')
   } catch (error) {
     let message = error instanceof Error ? error.message.split('\n').slice(-2).join(' ').trim() : 'Command failed'
+    let status: number | undefined,
+      resetAt: number | undefined,
+      rateLimited = false
     if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {
+      const output = error.stdout
+      const http = output.match(/^HTTP\/[\d.]+ (\d{3})/i) ?? message.match(/HTTP (\d{3})/i)
+      status = http ? Number(http[1]) : undefined
+      const head = output.split(/\r?\n\r?\n/, 1)[0] ?? ''
+      const reset = head.match(/^x-ratelimit-reset:\s*(\d+)/im)
+      const wait = head.match(/^retry-after:[ \t]*([^\r\n]+)/im)
+      rateLimited = Boolean(wait || /^x-ratelimit-remaining:\s*0\s*$/im.test(head))
+      const retryAt = wait
+        ? /^\d+$/.test(wait[1]!.trim())
+          ? Date.now() + Number(wait[1]) * 1000
+          : Date.parse(wait[1]!)
+        : 0
+      resetAt = Math.max(Number(reset?.[1] ?? 0) * 1000, retryAt || 0) || undefined
       try {
-        const payload: unknown = JSON.parse(error.stdout)
+        const payload: unknown = JSON.parse(output.replace(/^HTTP\/[^]*?\r?\n\r?\n/, ''))
         if (
           binary === 'gh' &&
           payload &&
@@ -87,9 +108,14 @@ export async function runCli(
       ok: false,
       command,
       message,
+      ...(status ? { status } : {}),
+      ...(resetAt ? { resetAt } : {}),
+      ...(rateLimited ? { rateLimited } : {}),
       next:
         binary === 'gh'
-          ? 'Check the gh path setting and run gh auth login.'
+          ? status === 401 || /not logged (?:in|into)|gh auth login/i.test(message)
+            ? 'Run gh auth login.'
+            : 'Check the GitHub connection and refresh.'
           : 'Check the Orca path setting and computer connection, then refresh.',
     }
   }

@@ -81,7 +81,7 @@ export function mergeDialog() {
           try {
             const result = await orca.plugin.request(
               'pr.merge',
-              { repo: pr.repo, number: pr.number, sha, method: select.value as MergeMethod },
+              { repo: pr.repo, number: pr.number, updated: pr.updated, sha, method: select.value as MergeMethod },
               { timeoutMs: 120000 },
             )
             if (result.ok) {

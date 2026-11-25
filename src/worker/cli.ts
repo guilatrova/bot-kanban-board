@@ -69,7 +69,16 @@ export async function runCli(
     let message = error instanceof Error ? error.message.split('\n').slice(-2).join(' ').trim() : 'Command failed'
     if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {
       try {
-        message = envelopeMessage(JSON.parse(error.stdout)) || message
+        const payload: unknown = JSON.parse(error.stdout)
+        if (
+          binary === 'gh' &&
+          payload &&
+          typeof payload === 'object' &&
+          'message' in payload &&
+          typeof payload.message === 'string'
+        )
+          message = payload.message
+        else message = envelopeMessage(payload) || message
       } catch {
         /* No Orca envelope. */
       }

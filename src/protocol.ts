@@ -2,6 +2,7 @@ import type { MergedPr, MergeMethod, RepositoryFacts } from './core/merge'
 export interface MergeInput {
   repo: string
   number: number
+  updated: string
   sha: string
   method: MergeMethod
 }

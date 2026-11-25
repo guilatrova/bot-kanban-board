@@ -114,7 +114,15 @@ export function activate(orca: OrcaWorkerApi) {
     const key = prKey(input),
       pr = data.prs.find((p) => prKey(p) === key),
       repo = data.repos[input.repo]
-    if (!pr || !input.sha || input.sha !== pr.sha || !repo?.ok || data.error || merging.has(key))
+    if (
+      !pr ||
+      !input.sha ||
+      input.updated !== pr.updated ||
+      input.sha !== pr.sha ||
+      !repo?.ok ||
+      data.error ||
+      merging.has(key)
+    )
       return {
         ok: false as const,
         command: 'Merge',

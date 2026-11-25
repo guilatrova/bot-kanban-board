@@ -1,4 +1,3 @@
-import { version } from '../package.json'
 import { mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
 import { botKey, type Computer } from '../src/core/model'
 import { badge, button, el, external, notice } from './dom'
@@ -186,7 +185,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
       panel.node.addEventListener('dismiss', () => list?.close())
       const footer = el('div', '', 'pf')
       footer.append(
-        el('span', 'Bot Kanban Board ' + version),
+        el('span', 'Bot Kanban Board 0.3.1'),
         external('Who created this?', 'https://github.com/guilatrova'),
       )
       panel.node.append(footer)

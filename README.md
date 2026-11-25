@@ -29,10 +29,6 @@ Snoozing hides an Item locally for one hour, until tomorrow at 9 a.m., or until 
 
 Select an open card’s bell to receive one notification when its Item changes status or its pull request is ready to merge. Orca’s plugin worker must be running.
 
-![Board with synthetic data](docs/screenshots/issue-9/header.png)
-
-[Saved views](docs/screenshots/phase-3/views.png) · [Drop zones](docs/screenshots/issue-9/item-drag.png) · [Item actions](docs/screenshots/issue-9/submenu.png) · [Drawer status selector](docs/screenshots/phase-3/drawer.png) · [Requested move](docs/screenshots/phase-3/requested.png) · [Chat handoff](docs/screenshots/phase-3/handoff.png) · [Cancellation reason](docs/screenshots/phase-3/cancel.png) · [Snoozed Items](docs/screenshots/phase-3/snoozed.png) · [Stack warning](docs/screenshots/phase-3/stack.png)
-
 ## Install
 
 Use Orca desktop 1.4.274 or later on macOS or Linux. Install the Orca CLI and GitHub CLI, then sign in with `gh auth login`. From a local checkout, run `orca plugin install . --json` (or `orca plugin dev load . --json` for development). Review the requested permissions and follow the approval command Orca prints. Open the board from your own desktop session.

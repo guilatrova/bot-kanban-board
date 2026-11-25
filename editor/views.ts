@@ -79,10 +79,10 @@ export function views(saved: Saved, update: () => void) {
   }
 }
 
-export async function readViews(): Promise<Saved> {
-  const state = await orca.storage.get('views')
+export async function readViews(demo: boolean): Promise<Saved> {
+  const state = await orca.storage.get(demo ? 'demo-views' : 'views')
   if (state && typeof state === 'object' && 'version' in state && state.version === 1) return state as Saved
-  const old = await orca.storage.get('filter')
+  const old = demo ? null : await orca.storage.get('filter')
   return {
     version: 1,
     views: [],

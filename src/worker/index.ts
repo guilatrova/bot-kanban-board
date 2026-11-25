@@ -45,7 +45,16 @@ export default async function activate(orca: OrcaWorkerApi) {
     prJob: Promise<void> | null = null
   function refreshItems() {
     return (itemJob ??= (async () => {
-      data.computers = await computers(await path('orcaPath'), (computer) => {
+      const actions = await orca.storage.get('actions')
+      const moves = actions && typeof actions === 'object' && 'moves' in actions ? actions.moves : null
+      const closing = new Set(
+        Object.entries(moves || {})
+          .filter(
+            ([, m]) => m && typeof m === 'object' && 'target' in m && (m.target === 'done' || m.target === 'canceled'),
+          )
+          .map(([k]) => k),
+      )
+      data.computers = await computers(await path('orcaPath'), closing, (computer) => {
         const position = data.computers.findIndex((previous) => previous.key === computer.key)
         if (position < 0) data.computers.push(computer)
         else data.computers[position] = computer

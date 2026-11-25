@@ -30,18 +30,19 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     void save().catch(notice)
     redraw()
   }
-  function reconcile(items: Item[]) {
+  function reconcile(items: Item[], closed: Record<string, Target>) {
     let dirty = false
     const now = Date.now()
     const deadlines = items.map((i) => i.snoozedUntil || 0)
     for (const [key, move] of Object.entries(state.moves)) {
       const item = items.find((i) => itemKey(i) === key)
-      const result = moveState(move, item?.status, now)
+      const result = moveState(move, item?.status ?? closed[key], now)
       if (result === 'pending') deadlines.push(move.at + moveTimeout)
       else {
         delete state.moves[key]
         dirty = true
-        if (result === 'expired' && item) notice('The bot did not apply the move · ' + item.title)
+        if (result === 'expired')
+          notice(item ? 'The bot did not apply the move · ' + item.title : 'Move request expired without confirmation.')
       }
     }
     for (const [key, end] of Object.entries(state.sleeps)) {

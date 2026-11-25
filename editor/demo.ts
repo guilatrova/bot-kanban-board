@@ -9,7 +9,7 @@ const send = () => handlers.get('board.changed')?.({ index: 0, count: 1, data: J
 const fake = {
   storage: {
     get: (k: string) => JSON.parse(sessionStorage.getItem(k) || 'null') as unknown,
-    set: (k: string, v: unknown) => sessionStorage.setItem(k, JSON.stringify(v)),
+    set: async (k: string, v: unknown) => sessionStorage.setItem(k, JSON.stringify(v)),
   },
   plugin: {
     on: (k: string, fn: (v: unknown) => void) => handlers.set(k, fn),

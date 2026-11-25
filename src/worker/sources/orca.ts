@@ -1,7 +1,11 @@
-import type { Computer, Item } from '../../core/model'
+import { itemKey, type Computer, type Item } from '../../core/model'
 import { bots, items, obj, rows, str, workers, workspaces } from '../../core/normalize'
 import { reader, source } from './read'
-export async function computers(path: string, onComputer: (computer: Computer) => void): Promise<Computer[]> {
+export async function computers(
+  path: string,
+  closing: Set<string>,
+  onComputer: (computer: Computer) => void,
+): Promise<Computer[]> {
   const read = reader('orca', path)
   const environments = await source('orca environment list', () =>
     read(['environment', 'list', '--json'], (v) =>
@@ -19,17 +23,37 @@ export async function computers(path: string, onComputer: (computer: Computer) =
           read(['bot', 'list', ...env], (v) => bots(v, target.key)),
           read(['worktree', 'ps', '--since', '30d', ...env], (v) => workspaces(v, target.key)),
         ])
+        const closed: Record<string, 'done' | 'canceled'> = {}
         const byBot = await Promise.all(
           roster.map(async (bot) => {
             const args = ['--bot', bot.name, ...env],
               live = await read(['bot', 'work', 'list', ...args], workers),
               all: Item[] = []
             let cursor: string | null = null
+            const includeClosed = [...closing].some((k) =>
+              k.startsWith(JSON.stringify([target.key, bot.name]).slice(0, -1) + ','),
+            )
             const seen = new Set<string>()
             do {
               const page: { items: Item[]; next: unknown } = await read(
-                ['bot', 'item', 'list', ...args, ...(cursor ? ['--cursor', cursor] : [])],
-                (v) => ({ items: items(v, bot, live), next: obj(v).nextCursor }),
+                [
+                  'bot',
+                  'item',
+                  'list',
+                  ...(includeClosed ? ['--all'] : []),
+                  ...args,
+                  ...(cursor ? ['--cursor', cursor] : []),
+                ],
+                (v) => {
+                  if (includeClosed)
+                    for (const row of rows(obj(v).items).map(obj)) {
+                      if (typeof row.number !== 'number' || (row.status !== 'done' && row.status !== 'canceled'))
+                        continue
+                      const key = itemKey({ computer: target.key, bot: bot.name, number: row.number })
+                      if (closing.has(key)) closed[key] = row.status
+                    }
+                  return { items: items(v, bot, live), next: obj(v).nextCursor }
+                },
               )
               all.push(...page.items)
               cursor = typeof page.next === 'string' ? page.next : null
@@ -39,7 +63,7 @@ export async function computers(path: string, onComputer: (computer: Computer) =
             return all
           }),
         )
-        return { bots: roster, workspaces: trees, items: byBot.flat() }
+        return { closed, bots: roster, workspaces: trees, items: byBot.flat() }
       })
       const computer = { ...target, source: result }
       onComputer(computer)

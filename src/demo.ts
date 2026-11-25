@@ -92,6 +92,7 @@ export function demoBoard(state: string | null = null) {
       {
         ...pr,
         number: 2,
+        url: pr.url.replace(/1$/, '2'),
         title: 'Update watering calendar',
         head: 'calendar',
         base: pr.head,

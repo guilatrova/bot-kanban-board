@@ -46,7 +46,7 @@ export interface Item {
 export interface Computer {
   key: string
   name: string
-  source: Source<{ bots: Bot[]; items: Item[]; workspaces: Workspace[] }>
+  source: Source<{ closed?: Record<string, 'done' | 'canceled'>; bots: Bot[]; items: Item[]; workspaces: Workspace[] }>
 }
 export interface IssueRef {
   repo: string
@@ -84,5 +84,6 @@ export interface FileChange {
   url: string
 }
 export const botKey = (computer: string, bot: string) => JSON.stringify([computer, bot])
-export const itemKey = (item: Item) => JSON.stringify([item.computer, item.bot, item.number])
+export const itemKey = (item: Pick<Item, 'computer' | 'bot' | 'number'>) =>
+  JSON.stringify([item.computer, item.bot, item.number])
 export const prKey = (pr: IssueRef) => pr.repo + '#' + pr.number

@@ -3,7 +3,7 @@ import type { Item, Status } from './model'
 export type Target = Status | 'done' | 'canceled'
 export type Move = { target: Target; at: number }
 export const moveTimeout = 10 * 60_000
-export function moveState(move: Move, status: Item['status'] | undefined, now: number) {
+export function moveState(move: Move, status: Target | undefined, now: number) {
   if (move.target === status) return 'confirmed'
   return now >= move.at + moveTimeout ? 'expired' : 'pending'
 }

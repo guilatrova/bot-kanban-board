@@ -27,9 +27,8 @@ bots, and from a Mac paired to it. Each line says how it was checked. Treat "not
 | One query for every computer | There is no all-hosts query. Ask each environment and join. |
 | Plugin service on a headless host | `orca plugin list` there: "Plugin service is not available on this runtime". The plugin runs in the desktop app. `orca plugin test` also failed there (missing `orca-test-register.mjs`). |
 
-Workaround for the first three: send the bot a message (`orca orchestration send --to bot:<name>`)
-asking it to apply the change itself. It works but is not instant and costs the bot a turn. Not
-tested end to end.
+An owner running `orca orchestration send --to bot:<name>` without a live terminal receives
+`no_active_sender_terminal`. The host reference describes `terminal.sendText` as “Types text into one terminal named by id, optionally pressing Enter.” Its result only reports whether the terminal accepted input. The reference documents neither owner-message delivery to an Item’s chat nor a clipboard write method. The board presents selectable request text and opens the bot workspace for the owner to paste it. Snoozes use local plugin storage.
 
 ## From the docs, not tested here
 

@@ -1,10 +1,11 @@
 import { readViews } from './views'
 import { readActions } from './item-actions'
 import { view } from './render'
-import { notice } from './dom'
+import { notice, el } from './dom'
 import type { Snapshot } from '../src/protocol'
 async function start() {
-  const saved = await readViews()
+  const loading = el('p', 'Reading board…', 'message')
+  document.body.append(loading)
   let board: Promise<ReturnType<typeof view>> | undefined
   let chunks: string[] = []
   orca.plugin.on('board.changed', (chunk) => {
@@ -12,7 +13,12 @@ async function start() {
     chunks[chunk.index] = chunk.data
     if (chunk.index === chunk.count - 1) {
       const data = JSON.parse(chunks.join('')) as Snapshot
-      board ??= readActions(Boolean(data.demo)).then((actions) => view(saved, actions))
+      board ??= Promise.all([readViews(Boolean(data.demo)), readActions(Boolean(data.demo))]).then(
+        ([saved, actions]) => {
+          loading.remove()
+          return view(saved, actions)
+        },
+      )
       void board.then((b) => b.draw(data)).catch(notice)
     }
   })

@@ -41,6 +41,6 @@ export async function openDemoBoard(orca: OrcaWorkerApi) {
   const folder = join('.orca', 'bots-board')
   const file = join(folder, 'Demo.botsboard')
   await mkdir(join(workspace.path, folder), { recursive: true })
-  await writeFile(join(workspace.path, file), '{}\n', { flag: 'a' })
+  await writeFile(join(workspace.path, file), '', { flag: 'a' })
   await orca.host.call('editor.open', { workspaceId: workspace.id, path: file })
 }

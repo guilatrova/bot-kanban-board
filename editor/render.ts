@@ -13,7 +13,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
     if (snapshot) draw(snapshot)
   }
   const update = () => {
-    void orca.storage.set('views', saved).catch(notice)
+    void orca.storage.set(snapshot?.demo ? 'demo-views' : 'views', saved).catch(notice)
     redraw()
   }
   const controls = views(saved, update)
@@ -119,7 +119,10 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
     snapshot = data
     demo.hidden = !data.demo
     const selected = new Set(saved.current.bots === 'all' ? [] : saved.current.bots)
-    actions.reconcile(data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])))
+    actions.reconcile(
+      data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
+      Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
+    )
     const board = buildBoard(data.computers, data.prs, saved.current)
     sleeping = board.columns.flatMap((c) => c.items.filter(actions.sleep))
     for (const c of board.columns) c.items = c.items.filter((i) => !actions.sleep(i))

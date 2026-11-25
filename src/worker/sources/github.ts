@@ -1,7 +1,11 @@
+import { mergedToday, mergeMethods, type RepositoryFacts } from '../../core/merge'
+import type { MergeInput, Progress } from '../../protocol'
+import type { Source } from '../../core/model'
+import { runCli } from '../cli'
 import type { PullRequest } from '../../core/model'
 import { obj, rows, str, num, pullRequest, fileChange } from '../../core/normalize'
 import { reader, source } from './read'
-export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ number title url isDraft headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}} }}}}`
+export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ number title url isDraft headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}} }}}}`
 export function github(path: string) {
   const read = reader('gh', path)
   return source('gh api graphql', async () => {
@@ -35,7 +39,51 @@ export function github(path: string) {
       after = result.after
       if (!after) break
     }
-    return { prs, total }
+    const repos: Record<string, Source<RepositoryFacts>> = {}
+    for (const repo of new Set(prs.map((p) => p.repo)))
+      repos[repo] = await source('gh api repos', () =>
+        read(['api', 'repos/' + repo], (v) => {
+          const info = obj(v)
+          return {
+            defaultBranch: str(info, 'default_branch'),
+            push: obj(info.permissions).push === true,
+            deleteBranchOnMerge: info.delete_branch_on_merge === true,
+            methods: mergeMethods.filter(
+              (m) =>
+                info[{ squash: 'allow_squash_merge', merge: 'allow_merge_commit', rebase: 'allow_rebase_merge' }[m]] ===
+                true,
+            ),
+          }
+        }),
+      )
+    const now = new Date()
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const merged = await source('gh api graphql', () =>
+      read(
+        [
+          'api',
+          'graphql',
+          '-f',
+          'query=query($search:String!){search(query:$search,type:ISSUE,first:40){nodes{... on PullRequest {number title url mergedAt repository{nameWithOwner}}}}}',
+          '-f',
+          'search=is:pr is:merged user:' + login + ' merged:>=' + midnight.toISOString() + ' sort:updated-desc',
+        ],
+        (v) =>
+          mergedToday(
+            rows(obj(obj(obj(v).data).search).nodes)
+              .map(obj)
+              .map((p) => ({
+                repo: str(obj(p.repository), 'nameWithOwner'),
+                number: num(p, 'number'),
+                title: str(p, 'title'),
+                url: str(p, 'url'),
+                mergedAt: str(p, 'mergedAt'),
+              })),
+            now,
+          ),
+      ),
+    )
+    return { prs, total, repos, merged }
   })
 }
 export function files(path: string, pr: PullRequest) {
@@ -45,4 +93,50 @@ export function files(path: string, pr: PullRequest) {
       (v) => rows(v).flatMap((page) => rows(page).map(fileChange)),
     ),
   )
+}
+
+export async function mergePr(
+  path: string,
+  pr: PullRequest,
+  input: MergeInput,
+  progress: (event: Progress) => void,
+  onReady: () => void,
+): Promise<Source<null>> {
+  const key = pr.repo + '#' + pr.number
+  for (const step of (pr.draft ? ['ready', 'merge'] : ['merge']) as ('ready' | 'merge')[]) {
+    progress({ key, step, state: 'running' })
+    const result =
+      step === 'ready'
+        ? await runCli('gh', ['pr', 'ready', String(pr.number), '-R', pr.repo], path, 'text')
+        : await runCli(
+            'gh',
+            [
+              'api',
+              '--method',
+              'PUT',
+              `repos/${pr.repo}/pulls/${pr.number}/merge`,
+              '-f',
+              'sha=' + input.sha,
+              '-f',
+              'merge_method=' + input.method,
+            ],
+            path,
+          )
+    if (!result.ok || (step === 'merge' && obj(result.value).merged !== true)) {
+      const failure = result.ok
+        ? {
+            ok: false as const,
+            command: 'gh api',
+            message: String(obj(result.value).message || 'GitHub did not confirm the merge.'),
+            next: '',
+          }
+        : result
+      failure.next = 'Check the pull request and its rules, then merge it on GitHub.'
+      progress({ key, step, state: 'failed', failure })
+      return failure
+    }
+    if (step === 'ready') onReady()
+    progress({ key, step, state: 'done' })
+  }
+  return { ok: true, value: null }
 }

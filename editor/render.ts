@@ -3,6 +3,8 @@ import { botKey, itemKey, prKey, type Item, type MappedPr } from '../src/core/mo
 import type { Snapshot } from '../src/protocol'
 import { el, button, age, labels, badge, prState, describeFailure } from './dom'
 import { drawers } from './drawer'
+import { mergeDialog } from './merge-dialog'
+import { external } from './dom'
 type Row = Item | MappedPr
 export function view(initial: string[]) {
   let selected = new Set(initial),
@@ -20,7 +22,14 @@ export function view(initial: string[]) {
     button('↻ Refresh', () => orca.plugin.request('board.refresh')),
   )
   document.body.append(header, filters, message, lanes)
-  const drawer = drawers()
+  const confirm = mergeDialog()
+  const openMerge = (pr: MappedPr) => confirm(pr, snapshot?.error || snapshot?.repos[pr.repo])
+  const drawer = drawers(openMerge)
+  let dragging: MappedPr | null = null
+  const resetDrag = () => {
+    dragging = null
+    lanes.classList.remove('drag-pr')
+  }
   const columns = new Map<string, { lane: HTMLElement; heading: HTMLElement; list: HTMLElement }>()
   for (const [key, title] of Object.entries(labels)) {
     const lane = el('section', '', 'lane'),
@@ -29,6 +38,18 @@ export function view(initial: string[]) {
     lane.dataset.key = key
     lane.style.setProperty('--tone', 'var(--' + key + ')')
     lane.append(heading, list)
+    if (key === 'merged') {
+      lane.insertBefore(el('p', 'Drop to review and confirm', 'drop-prompt'), list)
+      lane.ondragover = (e) => {
+        if (dragging) e.preventDefault()
+      }
+      lane.ondrop = (e) => {
+        e.preventDefault()
+        const pr = dragging
+        resetDrag()
+        if (pr) openMerge(pr)
+      }
+    }
     lanes.append(lane)
     columns.set(key, { lane, heading, list })
     for (let n = 0; n < 3; n++) list.append(el('div', '', 'skeleton'))
@@ -99,6 +120,15 @@ export function view(initial: string[]) {
         age(row.updated),
       ])
       const open = () => (isItem ? drawer.item(row, prs, trees, element) : drawer.pr(row, element))
+      if (!isItem) {
+        node.draggable = true
+        node.ondragstart = (e) => {
+          dragging = row
+          e.dataTransfer?.setData('text/plain', key)
+          lanes.classList.add('drag-pr')
+        }
+        node.ondragend = resetDrag
+      }
       node.onclick = open
       node.onkeydown = (e) => {
         if (e.target === element && (e.key === 'Enter' || e.key === ' ')) {
@@ -179,11 +209,29 @@ export function view(initial: string[]) {
           patch(unmapped, board.unmapped.map(card))
           nodes.push(group)
         }
+      } else if (key === 'merged') {
+        heading.textContent = 'Merged · ' + data.merged.length
+        const error = data.error || data.mergedError
+        if (error) nodes.push(el('p', describeFailure(error)))
+        for (const row of data.merged) {
+          const key = 'merged:' + prKey(row)
+          alive.add(key)
+          let node = cards.get(key)
+          if (!node) {
+            node = external('', row.url)
+            node.className = 'merged-card'
+            if (row.notification) node.classList.add('landed')
+            cards.set(key, node)
+          }
+          node.replaceChildren(el('small', prKey(row) + ' · ' + age(row.mergedAt)), el('h3', row.title))
+          if (row.notification) node.append(el('small', row.notification))
+          nodes.push(node)
+        }
       } else if (column) {
         heading.textContent = labels[column.status] + ' · ' + column.items.length
         nodes = column.items.map(card)
       }
-      const reading = key === 'prs' ? !data.prsAt && !data.error : !data.itemsAt
+      const reading = key === 'prs' || key === 'merged' ? !data.prsAt && !data.error : !data.itemsAt
       patch(list, nodes.length ? nodes : reading ? [el('div', '', 'skeleton')] : [el('p', 'Nothing here.', 'empty')])
     }
     for (const key of cards.keys())

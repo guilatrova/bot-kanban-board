@@ -40,7 +40,12 @@ export function commandLabel(binary: Binary, args: string[]) {
   return [binary, ...args.slice(0, binary === 'orca' ? 3 : 1).filter((arg) => !arg.startsWith('-'))].join(' ')
 }
 
-export async function runCli(binary: Binary, args: string[], configured = ''): Promise<Source<unknown>> {
+export async function runCli(
+  binary: Binary,
+  args: string[],
+  configured = '',
+  format: 'json' | 'text' = 'json',
+): Promise<Source<unknown>> {
   const command = commandLabel(binary, args)
   const env = { ...process.env }
   if (sessionKeys.some((key) => key in env)) {
@@ -54,6 +59,7 @@ export async function runCli(binary: Binary, args: string[], configured = ''): P
   try {
     const path = await binaryPath(binary, configured)
     const { stdout } = await execute(path, args, { env, timeout: 45_000, maxBuffer: 64 * 1024 * 1024 })
+    if (format === 'text') return { ok: true, value: stdout }
     const json: unknown = JSON.parse(stdout)
     if (binary === 'gh') return { ok: true, value: json }
     if (json && typeof json === 'object' && 'ok' in json && json.ok === true && 'result' in json)

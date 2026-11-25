@@ -57,6 +57,7 @@ export interface PullRequest {
   title: string
   url: string
   draft: boolean
+  sha?: string
   head: string
   base: string
   body: string

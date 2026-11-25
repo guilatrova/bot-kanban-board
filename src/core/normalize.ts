@@ -120,6 +120,7 @@ export function pullRequest(input: unknown): PullRequest {
     title: str(p, 'title'),
     url: str(p, 'url'),
     draft: p.isDraft,
+    sha: opt(p.headRefOid) ?? undefined,
     head: str(p, 'headRefName'),
     base: str(p, 'baseRefName'),
     body: str(p, 'body'),

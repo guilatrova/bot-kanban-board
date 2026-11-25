@@ -315,3 +315,108 @@ pre {
     scroll-behavior: auto !important;
   }
 }
+:root {
+  --merged: var(--in_progress);
+}
+.drop-prompt {
+  display: none;
+}
+.drag-pr .lane:not([data-key='merged']) {
+  opacity: 0.35;
+}
+.drag-pr [data-key='merged'] {
+  outline: 2px dashed var(--merged);
+}
+.drag-pr .drop-prompt {
+  display: block;
+  padding: 20px;
+  text-align: center;
+  color: var(--merged);
+}
+.merged-card {
+  display: block;
+  text-align: left;
+  width: 100%;
+  padding: 12px;
+  background: var(--orca-card);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+.merged-card h3 {
+  margin: 6px 0;
+}
+.merge-dialog {
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  max-height: 90vh;
+  width: min(470px, 90vw);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 60px #0005;
+}
+.merge-dialog h2 {
+  margin: 8px 0 16px;
+}
+.merge-dialog footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.merge-dialog select {
+  background: var(--orca-muted);
+  color: inherit;
+  border: 1px solid var(--edge);
+  padding: 6px;
+  border-radius: var(--radius);
+}
+.warning {
+  border-left: 3px solid var(--needs_you);
+  padding: 6px 10px;
+  background: var(--orca-muted);
+  margin: 6px 0;
+}
+.warning.danger {
+  border-color: var(--orca-destructive);
+  color: var(--orca-destructive);
+}
+.merge-facts label {
+  display: block;
+  margin-top: 14px;
+}
+.confirm {
+  background: var(--in_progress);
+  color: var(--orca-background);
+}
+.confirm.danger {
+  background: #a8313a;
+  color: white;
+}
+.merge-steps {
+  width: 100%;
+  border-top: 1px solid var(--edge);
+}
+.merge-steps [data-state='running'] {
+  color: var(--needs_you);
+}
+.merge-steps [data-state='done'] {
+  color: var(--in_progress);
+}
+.merge-steps [data-state='failed'] {
+  color: var(--orca-destructive);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .landed {
+    animation: land 0.5s ease-out;
+  }
+  @keyframes land {
+    from {
+      transform: translateY(-12px);
+      opacity: 0.3;
+      background: var(--merged);
+    }
+  }
+}

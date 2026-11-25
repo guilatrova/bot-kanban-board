@@ -102,6 +102,12 @@ export async function computers(
       return computer
     }),
   )
-  if (!environments.ok) results.push({ key: 'discovery', name: 'Paired computers', source: environments })
+  if (!environments.ok)
+    results.push({
+      key: 'discovery',
+      name: 'Paired computers',
+      warning: environments,
+      source: { ok: true, value: { bots: [], items: [], workspaces: [] } },
+    })
   return results
 }

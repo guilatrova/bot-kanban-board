@@ -68,7 +68,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
         .filter((i) => i.status === 'needs_you').length
       const unreachable = data.computers.filter((c) => !c.source.ok).length
-      const hasCount = data.computers.length > unreachable
+      const hasCount = data.computers.some((c) => c.key !== 'discovery' && c.source.ok)
       const text = hasCount
         ? 'Needs you ' + n + (unreachable ? ' · ' + unreachable + ' unreachable' : '')
         : 'Needs you ?'

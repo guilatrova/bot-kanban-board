@@ -94,11 +94,21 @@ export function avatars(storage: StorageApi) {
     const image = bytes ?? existing
     if (!image || image.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') return null
     const count = Math.ceil(image.length / chunkSize)
-    if (hash !== previous || !existing) {
-      for (let i = 0; i < count; i++)
-        await storage.set(key + hash + i, image.subarray(i * chunkSize, (i + 1) * chunkSize).toString('base64'))
+    const written: string[] = []
+    try {
+      if (hash !== previous || !existing) {
+        for (let i = 0; i < count; i++) {
+          const part = key + hash + i
+          await storage.set(part, image.subarray(i * chunkSize, (i + 1) * chunkSize).toString('base64'))
+          written.push(part)
+        }
+      }
+      await storage.set(key, { hash, count, time: Date.now() })
+    } catch {
+      await Promise.allSettled(written.map((part) => storage.delete(part)))
+      // An image that exceeds the shared storage quota remains usable in memory.
+      return image
     }
-    await storage.set(key, { hash, count, time: Date.now() })
     if (previous && previous !== hash && typeof record.count === 'number')
       for (let i = 0; i < record.count; i++) await storage.delete(key + previous + i)
     return image

@@ -162,7 +162,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       }),
     )
     message.textContent =
-      data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error)
+      data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error && !c.warning)
         ? 'No bots yet. Open Items will appear here when a bot creates one.'
         : ''
     const alive = new Set<string>()

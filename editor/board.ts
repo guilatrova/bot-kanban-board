@@ -1,16 +1,26 @@
+import { skeleton } from './loading'
 import { readMergeSettings } from './settings'
 import { readViews } from './views'
 import { readActions } from './item-actions'
 import { view } from './render'
-import { notice, el } from './dom'
+import { notice, el, button } from './dom'
 import type { Snapshot } from '../src/protocol'
 async function start() {
-  const loading = el('p', 'Reading board…', 'message')
+  const demo = (await orca.settings.get('demo')) === true
+  const settings = await readMergeSettings(demo)
+  const loading = skeleton(settings.prefs.compact)
+  const state = el('div', '', 'first-error')
+  const reason = el('span')
+  const again = button('Try again', () => run(true))
+  state.append(reason, again)
   document.body.append(loading)
+  const visibility = (shown: boolean, initial = false) => orca.plugin.request('board.visibility', { shown, initial })
+  document.addEventListener('visibilitychange', () => void visibility(!document.hidden).catch(notice))
+  window.addEventListener('pagehide', () => void visibility(false).catch(notice))
+  await visibility(!document.hidden, true)
   let board: Promise<ReturnType<typeof view>> | undefined
   let latest: Snapshot
   const roster = async () => {
-    await initialRead
     return latest.computers.flatMap((c) => (c.source.ok ? c.source.value.bots : []))
   }
   async function read(fresh = false) {
@@ -22,13 +32,18 @@ async function start() {
     }
     const data = JSON.parse(chunks.join('')) as Snapshot
     latest = data
+    if (!board && !data.prsAt) {
+      if (data.error) showError(data.error.message)
+      return
+    }
     board ??= Promise.all([
       readViews(Boolean(data.demo), roster),
-      readMergeSettings(Boolean(data.demo)),
+      settings,
       readActions(Boolean(data.demo)),
       orca.storage.get('collapsed'),
     ]).then(([saved, mergeSettings, actions, collapsed]) => {
       loading.remove()
+      state.remove()
       return view(
         saved,
         mergeSettings,
@@ -40,29 +55,43 @@ async function start() {
         ),
       )
     })
-    void board.then((b) => b.draw(data)).catch(notice)
+    ;(await board).draw(data)
   }
-  let dirty = false
-  let reading = true
-  async function drain() {
+  let dirty = false,
+    reading = false
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  function showError(message: string) {
+    reason.textContent = message
+    loading.remove()
+    if (!state.isConnected) document.body.append(state)
+  }
+  async function run(fresh = false) {
+    if (reading) {
+      dirty = true
+      return
+    }
+    reading = true
+    again.disabled = true
+    clearTimeout(retryTimer)
     try {
-      while (dirty) {
+      do {
         dirty = false
-        await read()
+        await read(fresh)
+        fresh = false
+      } while (dirty)
+    } catch (error) {
+      if (board) notice(error)
+      else {
+        showError('Could not read the board.')
+        retryTimer = setTimeout(() => void run(true), 90000)
       }
     } finally {
       reading = false
+      again.disabled = false
     }
   }
-  orca.plugin.on('board.changed', () => {
-    dirty = true
-    if (!reading) {
-      reading = true
-      void drain().catch(notice)
-    }
-  })
+  orca.plugin.on('board.changed', () => void run())
   orca.plugin.on('board.focus', () => void board?.then((b) => b.focus()))
-  const initialRead = read(true).finally(drain)
-  await initialRead
+  await run(true)
 }
-void start().catch((e) => notice(String(e) + ' · Reopen the board to retry.'))
+void start().catch(notice)

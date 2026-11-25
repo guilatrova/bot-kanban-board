@@ -41,6 +41,7 @@ export type Chunk = { index: number; count: number; data: string }
 declare module 'orca' {
   interface PluginRequests {
     'bot.tell': { input: BotMessage; output: boolean }
+    'board.visibility': { input: { shown: boolean; initial?: boolean }; output: null }
     'board.get': { input: { index: number; fresh?: boolean }; output: Chunk }
     'pr.read': {
       input: { repo: string; number: number; prOnly?: boolean }

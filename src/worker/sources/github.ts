@@ -6,9 +6,14 @@ import { obj, rows, str, num, mappingFields, pullRequest, fileChange } from '../
 import { reader, source } from './read'
 const pullFields = `number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}}`
 export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ ${pullFields} }}}}`
-export function readRepository(path: string, repo: string) {
+const logins = new Map<string, string>()
+const facts = new Map<string, { at: number; value: RepositoryFacts }>()
+export async function readRepository(path: string, repo: string) {
   const read = reader('gh', path)
-  return source('gh api repos', () =>
+  const key = JSON.stringify([path, repo]),
+    cached = facts.get(key)
+  if (cached && Date.now() - cached.at < 21600000) return { ok: true as const, value: cached.value }
+  const result = await source('gh api repos', () =>
     read(['api', 'repos/' + repo], (v) => {
       const info = obj(v)
       return {
@@ -22,11 +27,14 @@ export function readRepository(path: string, repo: string) {
       }
     }),
   )
+  if (result.ok) facts.set(key, { at: Date.now(), value: result.value })
+  return result
 }
 export function github(path: string) {
   const read = reader('gh', path)
   return source('gh api graphql', async () => {
-    const login = await read(['api', 'user'], (v) => str(obj(v), 'login'))
+    const login = logins.get(path) ?? (await read(['api', 'user'], (v) => str(obj(v), 'login')))
+    logins.set(path, login)
     const prs: PullRequest[] = []
     let total = 0,
       after = ''
@@ -150,6 +158,7 @@ export async function mergePr(
             next: '',
           }
         : result
+      if (step === 'merge') facts.delete(JSON.stringify([path, pr.repo]))
       failure.next = 'Check the pull request and its rules, then merge it on GitHub.'
       progress({ key, step, state: 'failed', failure })
       return failure

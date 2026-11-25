@@ -228,7 +228,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
         node.append(meta, el('h3', row.title))
         if (isItem) {
           const more = button(
-            '•••',
+            '',
             (e) => {
               e.stopPropagation()
               actions.menu(row)
@@ -247,11 +247,11 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
                 : row.workers.findLast((w) => w.subject)?.subject
           if (sub) node.append(el('p', sub, 'quote'))
           const active = row.workers.find((w) => w.state === 'working')
-          if (active) node.append(el('mark', '● ' + active.title))
+          if (active) node.append(el('mark', '● ' + active.title, 'running'))
           if (row.chat) node.append(el('small', row.chat))
         } else
           node.append(
-            el('mark', prState(row)),
+            el('mark', prState(row), row.draft ? 'draft' : row.mergeable === 'CONFLICTING' ? 'conflict' : 'ready'),
             el(
               'small',
               ['+' + row.additions + ' −' + row.deletions, row.files + ' files', row.checks]

@@ -162,7 +162,7 @@ mark {
   white-space: normal;
 }
 .chip[aria-pressed='false'] {
-  opacity: 0.55;
+  opacity: 0.45;
 }
 button,
 summary {
@@ -217,7 +217,7 @@ main {
 .list {
   overflow: auto;
   overflow-anchor: none;
-  padding: 0 8px 16px;
+  padding: 2px 8px 10px;
 }
 article {
   position: relative;
@@ -656,4 +656,81 @@ dialog button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (min-width: 1100px) {
+  body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  nav {
+    padding-left: 0;
+  }
+  body > .message,
+  main {
+    grid-column: 1 / -1;
+  }
+  .dock:not([hidden]) {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+.more::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  background:
+    radial-gradient(circle at 3px 7px, currentColor 1px, transparent 1.5px),
+    radial-gradient(circle at 7px 7px, currentColor 1px, transparent 1.5px),
+    radial-gradient(circle at 11px 7px, currentColor 1px, transparent 1.5px);
+}
+.more:hover,
+.more:focus-visible {
+  background: var(--raise);
+}
+mark,
+.link {
+  border-radius: 4px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 0 6px;
+}
+mark.running,
+mark.ready {
+  background: var(--run-soft);
+  color: var(--run);
+}
+mark.conflict {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+mark.draft {
+  background: var(--raise);
+  color: var(--dim);
+}
+.list > h3,
+.list > details > summary {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+.dock > div {
+  border: 0;
+  background: var(--card);
+  border-radius: 6px;
+}
+.dock > div:first-child {
+  color: var(--run);
+  background: var(--run-soft);
+}
+.dock > div:last-child {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+.option {
+  background: var(--needs-soft);
+  color: var(--fg);
 }

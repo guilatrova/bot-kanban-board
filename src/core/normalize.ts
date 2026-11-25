@@ -86,6 +86,8 @@ export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
           number: num(i, 'number'),
           title: str(i, 'title'),
           status: status as Status,
+          snoozedUntil:
+            typeof i.snoozedUntil === 'number' ? i.snoozedUntil : Date.parse(opt(i.snoozedUntil) ?? '') || undefined,
           updated: num(i, 'lastActivityAt'),
           chat: opt(chat.title),
           chatId: opt(chat.id),

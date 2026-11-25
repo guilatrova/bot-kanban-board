@@ -31,6 +31,7 @@ export interface Item {
   number: number
   title: string
   status: Status
+  snoozedUntil?: number
   updated: number
   chat: string | null
   chatId: string | null
@@ -70,6 +71,7 @@ export interface PullRequest {
   closes: IssueRef[]
 }
 export interface MappedPr extends PullRequest {
+  behind?: string
   items: Item[]
   workspaces: Workspace[]
   how: 'branch' | 'item' | 'issue' | null

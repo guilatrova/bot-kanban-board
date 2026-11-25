@@ -53,6 +53,7 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], filter: st
       error: c.source.ok ? null : c.source,
       count: items.filter((i) => i.computer === c.key).length,
     })),
+    ordered: mapped,
     ready: mapped.filter((p) => p.how && !p.draft),
     draft: mapped.filter((p) => p.how && p.draft),
     unmapped: mapped.filter((p) => !p.how),

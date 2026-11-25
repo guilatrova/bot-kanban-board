@@ -290,12 +290,21 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
             .join(' · ')
           nodes.push(prError)
         }
-        nodes.push(...board.ready.map(card))
-        if (board.draft.length) nodes.push(drafts, ...board.draft.map(card))
-        if (board.unmapped.length || data.total > data.prs.length) {
-          summary.textContent = 'No bot · ' + board.unmapped.length + ' shown of ' + data.total + ' open'
-          patch(unmapped, board.unmapped.map(card))
-          nodes.push(group)
+        // Keep the familiar groups unless they place a base after its dependent.
+        const positions = new Map(prs.map((pr, index) => [prKey(pr), index]))
+        const splitStack = prs.some((pr, index) => pr.behind && (positions.get(pr.behind) ?? -1) > index)
+        if (splitStack) {
+          nodes.push(...board.ordered.map(card))
+          if (data.total > data.prs.length)
+            nodes.push(el('small', data.prs.length + ' loaded of ' + data.total + ' open'))
+        } else {
+          nodes.push(...board.ready.map(card))
+          if (board.draft.length) nodes.push(drafts, ...board.draft.map(card))
+          if (board.unmapped.length || data.total > data.prs.length) {
+            summary.textContent = 'No bot · ' + board.unmapped.length + ' shown of ' + data.total + ' open'
+            patch(unmapped, board.unmapped.map(card))
+            nodes.push(group)
+          }
         }
       } else if (key === 'merged') {
         const history = data.merged.filter(

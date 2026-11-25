@@ -44,5 +44,7 @@ it('reconciles moves only on observed status or expiry', () => {
   const move = { target: 'waiting' as const, at: 100 }
   expect(moveState(move, undefined, 101)).toBe('pending')
   expect(moveState(move, 'waiting', 150)).toBe('confirmed')
+  expect(moveState({ ...move, target: 'done' }, 'done', 150)).toBe('confirmed')
+  expect(moveState({ ...move, target: 'done' }, 'canceled', 150)).toBe('pending')
   expect(moveState(move, 'needs_you', 100 + moveTimeout)).toBe('expired')
 })

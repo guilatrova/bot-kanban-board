@@ -69,6 +69,7 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
         key: c.key,
         name: c.name,
         warning: c.warning,
+        unreachable: !c.source.ok || c.unpaired === true,
         error: c.source.ok ? null : c.source,
         count: items.filter((i) => !isClosed(i.status) && i.computer === c.key).length,
       })),

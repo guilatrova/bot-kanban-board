@@ -48,6 +48,7 @@ export interface Item {
   text: string
 }
 export interface Computer {
+  unpaired?: boolean
   key: string
   name: string
   warning?: Failure

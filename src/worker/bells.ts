@@ -1,6 +1,5 @@
 import type { OrcaWorkerApi } from 'orca/worker'
-import { firedBells, type Bell } from '../core/bells'
-import type { Item, PullRequest } from '../core/model'
+import { resolvedBells, type Bell, type BellRead } from '../core/bells'
 import type { Snapshot } from '../protocol'
 export async function notifications(orca: OrcaWorkerApi, data: Snapshot, publish: () => void) {
   const key = data.demo ? 'demo-bells' : 'bells'
@@ -26,12 +25,14 @@ export async function notifications(orca: OrcaWorkerApi, data: Snapshot, publish
     })
     return null
   })
-  return (items: Item[], prs: PullRequest[]) =>
+  return (read: BellRead) =>
     serialize(async () => {
-      for (const [id, title] of firedBells(data.bells ?? [], items, prs)) {
-        const { delivered } = await orca.host.call('notifications.show', { title })
-        data.notificationsOff = !delivered
-        await orca.storage.set(key + '-off', !delivered)
+      for (const [id, title] of resolvedBells(data.bells ?? [], read)) {
+        if (title !== null) {
+          const { delivered } = await orca.host.call('notifications.show', { title })
+          data.notificationsOff = !delivered
+          await orca.storage.set(key + '-off', !delivered)
+        }
         await save((data.bells ?? []).filter((b) => b.id !== id))
       }
     })

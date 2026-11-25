@@ -76,6 +76,7 @@ export function unpairedComputers(
   return [...groups].map(([key, group]) => ({
     key,
     name: group.name,
+    unpaired: true,
     warning: {
       ok: false,
       command: 'orca environment list',
@@ -113,14 +114,31 @@ function worker(w: Record<string, unknown>): Worker {
 export function workers(data: unknown) {
   return rows(obj(data).items).map(obj).map(worker)
 }
-export function items(data: unknown, bot: Bot, live: Worker[], watched = new Set<string>()): Item[] {
+export function items(
+  data: unknown,
+  bot: Bot,
+  live: Worker[],
+  watched = new Set<string>(),
+  warn?: (message: string) => void,
+): Item[] {
   return rows(obj(data).items)
     .map(obj)
     .flatMap((i) => {
       const status = str(i, 'status')
       const closed = isClosed(status)
-      const timestamp = closed ? (i.closedAt ?? i.updatedAt ?? i.lastActivityAt) : i.lastActivityAt
-      const updated = typeof timestamp === 'number' ? timestamp : Date.parse(String(timestamp))
+      let updated: number
+      if (closed) {
+        const timestamp = [i.closedAt, i.updatedAt, i.lastActivityAt]
+          .map((value) => (typeof value === 'number' || typeof value === 'string' ? new Date(value).getTime() : NaN))
+          .find(Number.isFinite)
+        if (timestamp === undefined) {
+          warn?.(
+            `Skipping closed Item ${bot.name} #${i.number} on ${bot.computer}: no valid closedAt, updatedAt or lastActivityAt.`,
+          )
+          return []
+        }
+        updated = timestamp
+      } else updated = num(i, 'lastActivityAt')
       if (
         closed &&
         !isToday(new Date(updated)) &&
@@ -148,7 +166,7 @@ export function items(data: unknown, bot: Bot, live: Worker[], watched = new Set
           status: status as Status,
           snoozedUntil:
             typeof i.snoozedUntil === 'number' ? i.snoozedUntil : Date.parse(opt(i.snoozedUntil) ?? '') || undefined,
-          updated: closed ? updated : num(i, 'lastActivityAt'),
+          updated,
           chat: opt(chat.title),
           chatId: opt(chat.id),
           description: opt(i.description),

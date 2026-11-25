@@ -924,7 +924,7 @@ header .chips {
     background 0.15s,
     transform 0.15s;
 }
-.zone:last-child {
+.zone.danger {
   --z: var(--bad);
 }
 .zone.over {

@@ -2,7 +2,7 @@ import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, badge, prPill, describeFailure, notice, external } from './dom'
+import { el, button, age, badge, prPill, describeFailure, notice, external, labels } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
@@ -66,8 +66,11 @@ export function view(
     }
     if (key === 'closed' || key === 'merged') {
       const split = el('div', '', 'split')
-      for (const [index, title] of (key === 'closed' ? ['Completed', 'Cancelled'] : ['Merge', 'Close PR']).entries()) {
+      const targets = key === 'closed' ? (['done', 'canceled'] as const) : (['merge', 'close'] as const)
+      for (const target of targets) {
+        const title = target === 'merge' ? 'Merge' : target === 'close' ? 'Close PR' : labels[target]
         const zone = el('div', title, 'zone')
+        zone.classList.toggle('danger', target === 'canceled' || target === 'close')
         zone.ondragover = (e) => {
           if (key === 'closed' ? draggedItem : dragging) {
             e.preventDefault()
@@ -80,11 +83,9 @@ export function view(
           const item = draggedItem,
             pr = dragging
           resetDrag()
-          if (key === 'closed' && item) actions.move(item, index === 0 ? 'done' : 'canceled')
-          if (key === 'merged' && pr) {
-            if (index === 0) openMerge(pr)
-            else confirm(pr, undefined, true)
-          }
+          if (item && (target === 'done' || target === 'canceled')) actions.move(item, target)
+          if (pr && target === 'merge') openMerge(pr)
+          if (pr && target === 'close') confirm(pr, undefined, true)
         }
         split.append(zone)
       }
@@ -210,8 +211,7 @@ export function view(
             )
         }
         if (isItem) {
-          if (closed || row.status === 'planned')
-            node.append(el('mark', closed ? (row.status === 'done' ? 'Completed' : 'Cancelled') : 'Planned'))
+          if (closed || row.status === 'planned') node.append(el('mark', labels[row.status]))
           const more = button(
             '',
             (e) => {

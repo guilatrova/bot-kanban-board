@@ -59,19 +59,21 @@ export default async function activate(orca: OrcaWorkerApi) {
           .map(([key]) => key),
       )
       for (const bell of data.bells ?? []) if (bell.kind === 'item') closing.add(bell.id)
-      data.computers = await computers(await path('orcaPath'), closing, (computer) => {
-        const position = data.computers.findIndex((previous) => previous.key === computer.key)
-        if (position < 0) data.computers.push(computer)
-        else data.computers[position] = computer
-        data.itemsAt = Date.now()
-        publish()
-      })
+      data.computers = await computers(
+        await path('orcaPath'),
+        closing,
+        (computer) => {
+          const position = data.computers.findIndex((previous) => previous.key === computer.key)
+          if (position < 0) data.computers.push(computer)
+          else data.computers[position] = computer
+          data.itemsAt = Date.now()
+          publish()
+        },
+        (message) => orca.log(message),
+      )
       data.itemsAt = Date.now()
       publish()
-      await evaluateBells(
-        data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
-        [],
-      )
+      await evaluateBells({ items: data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])) })
       await avatar.prune(data.computers)
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
@@ -104,7 +106,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         data.total = result.value.total
         data.prsAt = Date.now()
         data.error = null
-        await evaluateBells([], data.prs)
+        await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded && merged.ok })
         const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
         for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
       } else data.error = result

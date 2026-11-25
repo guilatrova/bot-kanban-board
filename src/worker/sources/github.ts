@@ -85,7 +85,7 @@ export function github(path: string) {
       ),
       ...Array.from(new Set(prs.map((p) => p.repo)), loadRepository),
     ])
-    return { prs, total, repos, merged }
+    return { prs, total, repos, merged, allOpenLoaded: !after && prs.length >= total }
   })
 }
 export function files(path: string, pr: PullRequest) {

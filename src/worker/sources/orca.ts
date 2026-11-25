@@ -5,6 +5,7 @@ export async function computers(
   path: string,
   closing: Set<string>,
   onComputer: (computer: Computer) => void,
+  warn: (message: string) => void,
 ): Promise<Computer[]> {
   const read = reader('orca', path)
   const environments = await source('orca environment list', () =>
@@ -66,7 +67,7 @@ export async function computers(
                     const key = itemKey({ computer: target.key, bot: bot.name, number: row.number })
                     if (closing.has(key)) closed[key] = row.status
                   }
-                  return { items: items(v, bot, live, closing), next: obj(v).nextCursor }
+                  return { items: items(v, bot, live, closing, warn), next: obj(v).nextCursor }
                 },
               )
               all.push(...page.items)

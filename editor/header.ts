@@ -57,10 +57,10 @@ export function boardHeader(
       unreachable.replaceChildren()
       hosts.replaceChildren(
         ...board.computers.map((c) => {
-          const chip = el('span', c.name + ' · ' + (c.error ? 'Unreachable' : c.count), 'chip')
+          const chip = el('span', c.name + ' · ' + (c.unreachable ? 'Unreachable' : c.count), 'chip')
           if (c.error) chip.append(el('small', describeFailure(c.error)))
           if (c.warning) chip.append(el('small', describeFailure(c.warning)))
-          if (c.error || c.key.startsWith('federated:')) unreachable.append(chip.cloneNode(true))
+          if (c.unreachable) unreachable.append(chip.cloneNode(true))
           return chip
         }),
       )

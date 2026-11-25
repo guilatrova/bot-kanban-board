@@ -27,6 +27,7 @@
     ],
     "events": [{ "on": "agent.status.changed" }],
     "settings": [
+      { "key": "demo", "type": "boolean", "default": false, "title": "Demo data (restart plugin to apply)" },
       { "key": "orcaPath", "type": "string", "default": "", "title": "Orca executable path" },
       { "key": "ghPath", "type": "string", "default": "", "title": "GitHub CLI executable path" },
       {

@@ -7,19 +7,25 @@ import { github, files, mergePr } from './sources/github'
 import { openBoard } from './board-file'
 import { avatar } from './avatars'
 import { jump } from './jump'
-export function activate(orca: OrcaWorkerApi) {
-  const data: Snapshot = {
-    computers: [],
-    prs: [],
-    repos: {},
-    merged: [],
-    mergedError: null,
-    total: 0,
-    itemsAt: 0,
-    prsAt: 0,
-    error: null,
-    focus: false,
-  }
+import { demoBoard } from '../demo'
+import { openDemoBoard } from './board-file'
+export default async function activate(orca: OrcaWorkerApi) {
+  const demo = (await orca.settings.get('demo')) === true
+
+  const data: Snapshot = demo
+    ? demoBoard()
+    : {
+        computers: [],
+        prs: [],
+        repos: {},
+        merged: [],
+        mergedError: null,
+        total: 0,
+        itemsAt: 0,
+        prsAt: 0,
+        error: null,
+        focus: false,
+      }
   const landed = new Map<string, MergedPr>()
   const merging = new Set<string>()
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
@@ -89,16 +95,18 @@ export function activate(orca: OrcaWorkerApi) {
   }
   const refresh = () => Promise.all([refreshItems(), refreshPrs()])
   orca.panels.handle('board.get', async (_, context) => {
-    if (!data.itemsAt) await refreshItems()
+    if (!demo && !data.itemsAt) await refreshItems()
     publish(context.panel.id)
     data.focus = false
     return null
   })
   orca.panels.handle('board.refresh', async () => {
-    await refresh()
+    if (demo) publish()
+    else await refresh()
     return null
   })
   orca.panels.handle('avatar.get', (input) => {
+    if (demo) return null
     const c = data.computers.find((c) => c.key === 'local' && input.computer === c.key)
     if (!c?.source.ok) return null
     const { bots, workspaces } = c.source.value
@@ -109,8 +117,17 @@ export function activate(orca: OrcaWorkerApi) {
       input.offset,
     )
   })
-  orca.panels.handle('board.jump', async (input) => jump(orca, data.computers, await path('orcaPath'), input))
+  orca.panels.handle('board.jump', async (input) =>
+    demo ? 'Demo chat selected.' : jump(orca, data.computers, await path('orcaPath'), input),
+  )
   orca.panels.handle('pr.merge', async (input, context) => {
+    if (demo)
+      return {
+        ok: false as const,
+        command: 'Demo',
+        message: 'Demo data is read-only.',
+        next: 'Close the confirmation.',
+      }
     const key = prKey(input),
       pr = data.prs.find((p) => prKey(p) === key),
       repo = data.repos[input.repo]
@@ -174,6 +191,7 @@ export function activate(orca: OrcaWorkerApi) {
     }
   })
   orca.panels.handle('pr.files', async (input) => {
+    if (demo) return { ok: true as const, value: { data: '[]', end: true } }
     const pr = data.prs.find((p) => prKey(p) === input.key && p.updated === input.updated),
       key = input.key + '@' + input.updated
     if (!pr)
@@ -196,9 +214,11 @@ export function activate(orca: OrcaWorkerApi) {
   for (const focus of [false, true])
     orca.commands.register(focus ? 'bots-board.needs-you' : 'bots-board.open', async () => {
       data.focus = focus
-      await openBoard(orca, await path('orcaPath'))
+      if (demo) await openDemoBoard(orca)
+      else await openBoard(orca, await path('orcaPath'))
       if (focus) orca.panels.post('board.focus', null)
     })
+  if (demo) return
   let debounce: ReturnType<typeof setTimeout> | undefined
   const report = (e: unknown) => orca.log(String(e))
   orca.events.on('agent.status.changed', () => {

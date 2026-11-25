@@ -31,3 +31,16 @@ export async function openBoard(orca: OrcaWorkerApi, path: string) {
   if (!workspace) throw Error('Board folder unavailable. Reopen the board from the command palette.')
   await orca.host.call('editor.open', { workspaceId: workspace.id, path: file })
 }
+
+// Demo can open on a fresh install without registering a project through the CLI.
+export async function openDemoBoard(orca: OrcaWorkerApi) {
+  const focused = await orca.host.call('workspace.readContext')
+  const { workspaces } = await orca.host.call('workspace.list')
+  const workspace = workspaces.find((w) => w.id === focused?.workspaceId && (!w.hostId || w.hostId === 'local'))
+  if (!workspace) throw Error('Open a local workspace to display the demo.')
+  const folder = join('.orca', 'bots-board')
+  const file = join(folder, 'Demo.botsboard')
+  await mkdir(join(workspace.path, folder), { recursive: true })
+  await writeFile(join(workspace.path, file), '{}\n', { flag: 'a' })
+  await orca.host.call('editor.open', { workspaceId: workspace.id, path: file })
+}

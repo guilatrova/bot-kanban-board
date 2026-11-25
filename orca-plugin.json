@@ -14,7 +14,7 @@
         "id": "board",
         "title": "Bots board",
         "extensions": [".botsboard"],
-        "entry": "editor/board.ts",
+        "entry": "editor/board.html",
         "frame": "isolated"
       }
     ],

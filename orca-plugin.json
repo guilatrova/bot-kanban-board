@@ -1,0 +1,57 @@
+{
+  "manifestVersion": 2,
+  "id": "bots-board",
+  "name": "Bots board",
+  "version": "0.1.0",
+  "description": "Open Items and pull requests across your Orca computers.",
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker/index.ts",
+  "engines": { "orca": ">=1.4.274" },
+  "contributes": {
+    "customEditors": [
+      {
+        "id": "board",
+        "title": "Bots board",
+        "extensions": [".botsboard"],
+        "entry": "editor/board.html",
+        "frame": "isolated"
+      }
+    ],
+    "commands": [
+      { "id": "bots-board.open", "title": "Open bots board" },
+      { "id": "bots-board.needs-you", "title": "Show Needs you" }
+    ],
+    "statusBarItems": [
+      { "id": "needs-you", "text": "Needs you \u2026", "icon": "bell", "command": "bots-board.needs-you" }
+    ],
+    "events": [{ "on": "agent.status.changed" }],
+    "settings": [
+      { "key": "orcaPath", "type": "string", "default": "", "title": "Orca executable path" },
+      { "key": "ghPath", "type": "string", "default": "", "title": "GitHub CLI executable path" },
+      {
+        "key": "itemsSeconds",
+        "type": "integer",
+        "default": 30,
+        "title": "Item refresh interval (seconds)",
+        "minimum": 10,
+        "maximum": 3600
+      },
+      {
+        "key": "prSeconds",
+        "type": "integer",
+        "default": 90,
+        "title": "Pull request refresh interval (seconds)",
+        "minimum": 10,
+        "maximum": 3600
+      }
+    ]
+  },
+  "capabilities": [
+    { "kind": "storage:own" },
+    { "kind": "settings:own" },
+    { "kind": "workspace:read" },
+    { "kind": "workspace:write" },
+    { "kind": "agent:read" }
+  ]
+}

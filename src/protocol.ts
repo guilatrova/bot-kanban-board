@@ -35,6 +35,7 @@ declare module 'orca' {
       input: { computer: string; bot: string; offset: number }
       output: { data: string; next: number | null } | null
     }
+    'pr.close': { input: { repo: string; number: number }; output: Source<null> }
     'pr.merge': { input: MergeInput; output: Source<null> }
     'pr.files': {
       input: { key: string; updated: string; offset: number }

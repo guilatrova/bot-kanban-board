@@ -3,7 +3,7 @@ import type { Snapshot } from '../protocol'
 import { prKey } from '../core/model'
 import { computers } from './sources/orca'
 import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
-import { github, files, mergePr } from './sources/github'
+import { github, files, mergePr, closePr } from './sources/github'
 import { openBoard } from './board-file'
 import { avatars } from './avatars'
 import { jump } from './jump'
@@ -135,6 +135,33 @@ export default async function activate(orca: OrcaWorkerApi) {
   orca.panels.handle('board.jump', async (input) =>
     demo ? 'Demo chat selected.' : jump(orca, data.computers, await path('orcaPath'), input),
   )
+  orca.panels.handle('pr.close', async (input) => {
+    const key = prKey(input)
+    const pr = data.prs.find((p) => prKey(p) === key)
+    if (demo || !pr || merging.has(key) || data.error)
+      return {
+        ok: false as const,
+        command: 'Close PR',
+        message: demo ? 'Demo data is read-only.' : 'Pull request unavailable.',
+        next: 'Refresh the board.',
+      }
+    merging.add(key)
+    try {
+      const result = await closePr(await path('ghPath'), pr)
+      if (result.ok) {
+        data.prs = data.prs.filter((p) => prKey(p) !== key)
+        data.total = Math.max(0, data.total - 1)
+        publish()
+      }
+      return result
+    } finally {
+      merging.delete(key)
+      void (async () => {
+        await prJob
+        await refreshPrs()
+      })().catch(report)
+    }
+  })
   orca.panels.handle('pr.merge', async (input, context) => {
     if (demo)
       return {

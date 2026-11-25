@@ -97,6 +97,17 @@ export function files(path: string, pr: PullRequest) {
   )
 }
 
+export function closePr(path: string, pr: PullRequest) {
+  return source('gh api pulls', () =>
+    reader('gh', path)(
+      ['api', '--method', 'PATCH', `repos/${pr.repo}/pulls/${pr.number}`, '-f', 'state=closed'],
+      (value) => {
+        if (obj(value).state !== 'closed') throw Error('GitHub did not confirm the close.')
+        return null
+      },
+    ),
+  )
+}
 export async function mergePr(
   path: string,
   pr: PullRequest,

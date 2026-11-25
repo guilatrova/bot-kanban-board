@@ -2,7 +2,7 @@ import { mergedToday, mergeMethods, type RepositoryFacts } from '../../core/merg
 import type { MergeInput, Progress } from '../../protocol'
 import { prKey, type PullRequest, type Source } from '../../core/model'
 import { runCli } from '../cli'
-import { obj, rows, str, num, pullRequest, fileChange } from '../../core/normalize'
+import { obj, rows, str, num, mappingFields, pullRequest, fileChange } from '../../core/normalize'
 import { reader, source } from './read'
 const pullFields = `number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}}`
 export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ ${pullFields} }}}}`
@@ -78,7 +78,8 @@ export function github(path: string) {
               rows(obj(obj(obj(v).data).search).nodes)
                 .map(obj)
                 .map((p) => ({
-                  ...pullRequest(p),
+                  ...mappingFields(p),
+                  repo: str(obj(p.repository), 'nameWithOwner'),
                   number: num(p, 'number'),
                   title: str(p, 'title'),
                   url: str(p, 'url'),

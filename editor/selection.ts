@@ -15,7 +15,7 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
   bar.append(label, button('Clear', clear), go)
   lane.append(bar)
   function sync() {
-    label.textContent = selected.size + ' selected'
+    label.textContent = selected.size + (selected.size === 1 ? ' pull request selected' : ' pull requests selected')
     lane.classList.toggle('sel-mode', !!selected.size)
     bar.inert = !selected.size
     bar.classList.toggle('on', !!selected.size)
@@ -32,6 +32,97 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') clear()
+  })
+  const board = lane.closest('main')!
+  board.addEventListener('pointerdown', (down) => {
+    if (
+      down.button !== 0 ||
+      down.pointerType !== 'mouse' ||
+      !(down.target instanceof Element) ||
+      down.target.closest('article, .merged-card, h2, h3, button, summary, a, .selbar, .queue, .rail, [role=scrollbar]')
+    )
+      return
+    const base = new Set(down.shiftKey || down.metaKey ? selected : [])
+    const origin = { x: down.clientX + board.scrollLeft, y: down.clientY }
+    let x = down.clientX,
+      y = down.clientY,
+      frame = 0
+    let box: HTMLElement | undefined
+    const count = el('span', '', 'cnt')
+    function paint() {
+      if (!box) return
+      const bounds = board.getBoundingClientRect()
+      const speed = x < bounds.left + 32 ? -12 : x > bounds.right - 32 ? 12 : 0
+      board.scrollLeft += speed
+      const left = Math.min(x, origin.x - board.scrollLeft),
+        right = Math.max(x, origin.x - board.scrollLeft)
+      const top = Math.min(y, origin.y),
+        bottom = Math.max(y, origin.y)
+      Object.assign(box.style, {
+        left: left + 'px',
+        top: top + 'px',
+        width: right - left + 'px',
+        height: bottom - top + 'px',
+      })
+      for (const key of visible.keys()) {
+        const card = cards.get(key)
+        if (!card) continue
+        const r = card.getBoundingClientRect(),
+          clip = card.closest('.list')!.getBoundingClientRect()
+        const hit =
+          r.width > 0 &&
+          r.height > 0 &&
+          !card.closest('.rail') &&
+          Math.max(r.left, clip.left, bounds.left, left) <= Math.min(r.right, clip.right, bounds.right, right) &&
+          Math.max(r.top, clip.top, top) <= Math.min(r.bottom, clip.bottom, bottom)
+        if (hit || base.has(key)) {
+          if (!selected.has(key) && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+            card.animate([{ scale: '1.015' }, { scale: '1' }], { duration: 180, easing: 'cubic-bezier(.34,1.4,.5,1)' })
+          selected.add(key)
+        } else selected.delete(key)
+      }
+      sync()
+      count.textContent = String(selected.size)
+      box.classList.toggle('has', selected.size > 0)
+      if (speed) frame = requestAnimationFrame(paint)
+    }
+    function move(e: PointerEvent) {
+      if (e.pointerId !== down.pointerId) return
+      x = e.clientX
+      y = e.clientY
+      if (!box) {
+        if (Math.hypot(x - down.clientX, y - down.clientY) < 6) return
+        box = el('div', '', 'marquee on')
+        box.append(count)
+        document.body.append(box)
+        board.setPointerCapture(e.pointerId)
+      }
+      cancelAnimationFrame(frame)
+      paint()
+    }
+    function end() {
+      cancelAnimationFrame(frame)
+      box?.classList.add('fade')
+      if (box) setTimeout(() => box?.remove(), 250)
+      if (board.hasPointerCapture(down.pointerId)) board.releasePointerCapture(down.pointerId)
+      document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', end)
+      document.removeEventListener('pointercancel', end)
+      document.removeEventListener('keydown', escape)
+      window.removeEventListener('blur', end)
+    }
+    function escape(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        end()
+        clear()
+      }
+    }
+    down.preventDefault()
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', end)
+    document.addEventListener('pointercancel', end)
+    document.addEventListener('keydown', escape)
+    window.addEventListener('blur', end)
   })
   return {
     clear,

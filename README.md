@@ -1,6 +1,8 @@
-# Orca Bots Board
+![Bot Kanban Board](assets/cover.png)
 
-Open **Open bots board** from the Orca command palette to see open Items on this computer and its saved paired computers. Select **Needs you** in the status bar to jump to the oldest outstanding questions. Click a bot to filter, or Alt-click or Cmd-click to show that bot alone.
+# Bot Kanban Board
+
+Open **Open Bot Kanban Board** from the Orca command palette to see open Items on this computer and its saved paired computers. Select **Needs you** in the status bar to jump to the oldest outstanding questions. Click a bot to filter, or Alt-click or Cmd-click to show that bot alone.
 
 Item drawers show the question, suggested replies, worker reports and links to related pull requests. **Answer in Orca** opens the bot workspace so you can reply in its chat. Pull request drawers show changed files, expandable diffs and links to GitHub. The board matches pull requests by workspace branch, direct Item reference or closing issue.
 

@@ -264,7 +264,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     return { ok: true as const, value: { data: json.slice(input.offset, end), end: end >= json.length } }
   })
   for (const focus of [false, true])
-    orca.commands.register(focus ? 'bots-board.needs-you' : 'bots-board.open', async () => {
+    orca.commands.register(focus ? 'bot-kanban-board.needs-you' : 'bot-kanban-board.open', async () => {
       data.focus = focus
       await openBoard(orca, demo ? null : await path('orcaPath'))
       if (focus) orca.panels.post('board.focus', null)

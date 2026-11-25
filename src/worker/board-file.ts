@@ -9,8 +9,8 @@ export async function openBoard(orca: OrcaWorkerApi, path: string | null) {
     process.platform === 'darwin'
       ? join(homedir(), 'Library', 'Application Support')
       : process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share')
-  const folder = join(root, 'orca-bots-board'),
-    file = 'Board.botsboard'
+  const folder = join(root, 'bot-kanban-board'),
+    file = 'Board.botkanban'
   await mkdir(folder, { recursive: true })
   try {
     await writeFile(join(folder, file), '{}\n', { flag: 'wx' })

@@ -26,7 +26,7 @@ Use Orca desktop 1.4.274 or later on macOS or Linux. Install the Orca CLI and Gi
 
 ## Access
 
-The trusted worker runs Node.js with your account’s access. Live mode invokes the Orca and GitHub CLIs, reads available local bot avatars and maintains a board file in the application data directory.
+The trusted worker runs Node.js with your account’s access. Live mode invokes the Orca and GitHub CLIs, reads available bot avatars on their owning computers and maintains a board file in the application data directory.
 
 - `storage:own` persists filters, named views, requested moves and local snoozes.
 - `settings:own` reads executable paths, polling intervals and the demo setting.
@@ -54,7 +54,7 @@ The trusted worker runs Node.js with your account’s access. Live mode invokes 
 - Merged history reads the first 40 GitHub search results sorted by update time. Merge queues require continuing on GitHub. After merging, tell the owning bot in Orca.
 
 - GitHub search reads up to five pages of 40 open pull requests. The board shows the open total. The PR files API returns up to 3,000 files. When fewer files arrive than the reported number of changes, the drawer shows both counts and a GitHub files link. Binary and large files can have no patch.
-- Remote bots use initials. Orca's file commands open tabs, and its terminal read command reads terminal output. Neither returns the contents of a paired bot's avatar file. Local bots use initials if their PNG is unavailable.
+- The worker reads remote avatars through a short-lived Orca terminal on the paired computer. It caches verified PNGs in plugin storage and checks for changes every ten minutes while the board is in use. Initials appear when a photo is unavailable.
 - Orca opens a bot's workspace. Select the original chat there to answer. The bot deep link is a fallback when the folder workspace cannot be opened.
 - Desktop operation and paired-computer jumps still need an end-to-end run on a Mac. The CLI runner detects inherited bot-session context and directs the operator to open the board from the desktop as themselves.
 

@@ -1,5 +1,5 @@
 import { itemKey, type Computer, type Item } from '../../core/model'
-import { bots, items, obj, rows, str, workers, workspaces } from '../../core/normalize'
+import { botOwners, bots, items, obj, rows, str, workers, workspaces } from '../../core/normalize'
 import { reader, source } from './read'
 export async function computers(
   path: string,
@@ -15,12 +15,26 @@ export async function computers(
     ),
   )
   const targets = [{ key: 'local', name: 'This computer' }, ...(environments.ok ? environments.value : [])]
-  const results = await Promise.all(
+  const rosters = await Promise.all(
     targets.map(async (target) => {
       const env = ['--environment', target.key, '--json']
       const roster = await source('orca bot list', () => read(['bot', 'list', ...env], (v) => bots(v, target.key)))
+      return { target, env, roster }
+    }),
+  )
+  const owners = botOwners(
+    rosters.flatMap(({ target, roster }) => (roster.ok ? [{ key: target.key, bots: roster.value }] : [])),
+  )
+  const results = await Promise.all(
+    rosters.map(async ({ target, env, roster }) => {
       if (!roster.ok) {
         const computer = { ...target, source: roster }
+        onComputer(computer)
+        return computer
+      }
+      const resident = roster.value.filter((b) => owners.get(b.id) === target.key)
+      if (!resident.length) {
+        const computer: Computer = { ...target, source: { ok: true, value: { bots: [], workspaces: [], items: [] } } }
         onComputer(computer)
         return computer
       }
@@ -29,7 +43,7 @@ export async function computers(
       )
       const closed: Record<string, 'done' | 'canceled'> = {}
       const byBot = await Promise.all(
-        roster.value.map(async (bot) => {
+        resident.map(async (bot) => {
           const result = await source('orca bot item list', async () => {
             const args = ['--bot', bot.name, ...env],
               live = await read(['bot', 'work', 'list', ...args], workers),
@@ -76,7 +90,12 @@ export async function computers(
         warning: trees.ok ? undefined : trees,
         source: {
           ok: true,
-          value: { closed, bots: roster.value, workspaces: trees.ok ? trees.value : [], items: byBot.flat() },
+          value: {
+            closed,
+            bots: resident,
+            workspaces: trees.ok ? trees.value.filter((w) => resident.some((b) => b.name === w.bot)) : [],
+            items: byBot.flat(),
+          },
         },
       }
       onComputer(computer)

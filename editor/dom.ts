@@ -66,12 +66,12 @@ export function external(label: string, url: string) {
     if (!result?.opened) notice('GitHub did not open. Allow the link in Orca and try again.')
   })
 }
-const pictures = new Map<string, Promise<string | null>>()
+const pictures = new Map<string, { time: number; value: Promise<string | null> }>()
 async function loadAvatar(computer: string, bot: string) {
   let offset = 0
   const parts = ['data:image/png;base64,']
   for (;;) {
-    const part = await orca.plugin.request('avatar.get', { computer, bot, offset })
+    const part = await orca.plugin.request('avatar.get', { computer, bot, offset }, { timeoutMs: 120000 })
     if (!part) return null
     parts.push(part.data)
     if (part.next === null) return parts.join('')
@@ -90,19 +90,18 @@ export function badge(computer: string, bot: string) {
   )
   const hash = Array.from(bot).reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 0)
   span.style.setProperty('--tint', 'var(--' + ['needs_you', 'in_progress', 'waiting', 'prs'][hash % 4] + ')')
-  if (computer === 'local') {
-    let picture = pictures.get(bot)
-    if (!picture) {
-      picture = loadAvatar(computer, bot).catch(() => null)
-      pictures.set(bot, picture)
-    }
-    void picture.then((src) => {
-      if (!src) return
-      const img = new Image()
-      img.alt = ''
-      img.onload = () => span.replaceChildren(img)
-      img.src = src
-    })
+  const key = JSON.stringify([computer, bot])
+  let picture = pictures.get(key)
+  if (!picture || Date.now() - picture.time >= 600000) {
+    picture = { time: Date.now(), value: loadAvatar(computer, bot).catch(() => null) }
+    pictures.set(key, picture)
   }
+  void picture.value.then((src) => {
+    if (!src) return
+    const img = new Image()
+    img.alt = ''
+    img.onload = () => span.replaceChildren(img)
+    img.src = src
+  })
   return span
 }

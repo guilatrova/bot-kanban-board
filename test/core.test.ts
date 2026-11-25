@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import sample from './fixtures/board.json'
-import { bots, items, pullRequest } from '../src/core/normalize'
+import { botOwners, bots, items, pullRequest } from '../src/core/normalize'
 import { mapPrs } from '../src/core/map-prs'
 import { allView, buildBoard, toggleBot } from '../src/core/board'
 import { botKey, type Bot, type Computer, type Workspace } from '../src/core/model'
@@ -25,6 +25,12 @@ describe('normalize', () => {
     const clio = { id: 'clio-id', name: 'Clio' }
     const mac = bots({ bots: [{ ...clio, server: { name: 'Dell', id: 'dell' } }] }, 'local')
     const dell = bots({ bots: [clio] }, 'dell')
+    expect(
+      botOwners([
+        { key: 'local', bots: bots({ bots: [clio] }, 'local') },
+        { key: 'dell', bots: dell },
+      ]).get(clio.id),
+    ).toBe('dell')
     expect(mac).toEqual([])
     expect(dell.map((b) => b.computer)).toEqual(['dell'])
     const board = buildBoard(

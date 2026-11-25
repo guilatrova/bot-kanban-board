@@ -34,6 +34,15 @@ export function bots(data: unknown, computer: string): Bot[] {
     .filter((b) => !b.server) // Federated rows belong to the named server and appear on its own roster.
     .map((b) => ({ computer, id: str(b, 'id'), name: str(b, 'name'), home: opt(b.botHome) }))
 }
+export function botOwners(rosters: { key: string; bots: Bot[] }[]) {
+  const owners = new Map<string, string>()
+  // A saved environment is authoritative when a local roster repeats its UUID.
+  for (const roster of rosters)
+    for (const bot of roster.bots) {
+      if (!owners.has(bot.id) || owners.get(bot.id) === 'local') owners.set(bot.id, roster.key)
+    }
+  return owners
+}
 export function workspaces(data: unknown, computer: string): Workspace[] {
   return rows(obj(data).worktrees)
     .map(obj)

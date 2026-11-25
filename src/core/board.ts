@@ -1,14 +1,18 @@
 import { botKey, statuses, type Computer, type PullRequest } from './model'
+import type { MergedPr } from './merge'
 import { stackOrder } from './stacks'
 import { mapPrs, repoMatch } from './map-prs'
 export type View = { name: string; bots: string[] | 'all'; repos: string[] | 'all'; needsMeOnly: boolean }
 export const allView: View = { name: '', bots: 'all', repos: 'all', needsMeOnly: false }
-export function buildBoard(computers: Computer[], prs: PullRequest[], filter: string[] | View) {
+export function selectedBots(filter: View['bots'], bots: { computer: string; name: string }[]) {
+  const keys = new Set(bots.map((b) => botKey(b.computer, b.name)))
+  return new Set(filter === 'all' ? [] : filter.filter((key) => keys.has(key)))
+}
+export function buildBoard(computers: Computer[], prs: PullRequest[], view: View, merged: MergedPr[] = []) {
   const sources = computers.flatMap((c) => (c.source.ok ? [c.source.value] : []))
   const bots = sources.flatMap((s) => s.bots),
     items = sources.flatMap((s) => s.items)
-  const view = Array.isArray(filter) ? { ...allView, bots: filter } : filter
-  const selected = new Set(view.bots === 'all' ? [] : view.bots)
+  const selected = selectedBots(view.bots, bots)
   const workspaces = sources.flatMap((s) => s.workspaces)
   const allPrs = stackOrder(mapPrs(prs, items, workspaces))
   const acceptsRepo = (repo: string) =>
@@ -46,6 +50,8 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], filter: st
   )
   return {
     columns,
+    selected,
+    merged: merged.filter((pr) => !view.needsMeOnly && !selected.size && acceptsRepo(pr.repo)),
     bots: bots.map((b) => ({ ...b, count: items.filter((i) => i.bot === b.name && i.computer === b.computer).length })),
     computers: computers.map((c) => ({
       key: c.key,

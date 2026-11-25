@@ -1,4 +1,4 @@
-import { allView, type View } from '../src/core/board'
+import { allView, selectedBots, type View } from '../src/core/board'
 import { button } from './dom'
 import { panel, ask } from './controls'
 
@@ -79,16 +79,28 @@ export function views(saved: Saved, update: () => void) {
   }
 }
 
-export async function readViews(demo: boolean): Promise<Saved> {
+export async function readViews(
+  demo: boolean,
+  roster: () => Promise<{ name: string; computer: string }[]>,
+): Promise<Saved> {
   const state = await orca.storage.get(demo ? 'demo-views' : 'views')
   if (state && typeof state === 'object' && 'version' in state && state.version === 1) return state as Saved
   const old = demo ? null : await orca.storage.get('filter')
+  const migrated =
+    Array.isArray(old) && old.length
+      ? [
+          ...selectedBots(
+            old.filter((k): k is string => typeof k === 'string'),
+            await roster(),
+          ),
+        ]
+      : []
   return {
     version: 1,
     views: [],
     current: {
       ...allView,
-      bots: Array.isArray(old) && old.length ? old.filter((k): k is string => typeof k === 'string') : 'all',
+      bots: migrated.length ? migrated : 'all',
     },
   }
 }

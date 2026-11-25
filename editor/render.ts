@@ -118,12 +118,12 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
   function draw(data: Snapshot) {
     snapshot = data
     demo.hidden = !data.demo
-    const selected = new Set(saved.current.bots === 'all' ? [] : saved.current.bots)
     actions.reconcile(
       data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
       Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
     )
-    const board = buildBoard(data.computers, data.prs, saved.current)
+    const board = buildBoard(data.computers, data.prs, saved.current, data.merged)
+    const selected = board.selected
     sleeping = board.columns.flatMap((c) => c.items.filter(actions.sleep))
     for (const c of board.columns) c.items = c.items.filter((i) => !actions.sleep(i))
     snoozed.textContent = 'Snoozed ' + sleeping.length
@@ -307,16 +307,10 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           }
         }
       } else if (key === 'merged') {
-        const history = data.merged.filter(
-          (p) =>
-            !saved.current.needsMeOnly &&
-            !selected.size &&
-            (saved.current.repos === 'all' || saved.current.repos.includes(p.repo)),
-        )
-        heading.textContent = 'Merged · ' + history.length
+        heading.textContent = 'Merged · ' + board.merged.length
         const error = data.error || data.mergedError
         if (error) nodes.push(el('p', describeFailure(error)))
-        for (const row of history) {
+        for (const row of board.merged) {
           const key = 'merged:' + prKey(row)
           alive.add(key)
           let node = cards.get(key)

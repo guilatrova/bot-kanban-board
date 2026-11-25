@@ -115,6 +115,7 @@ export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
 export function pullRequest(input: unknown): PullRequest {
   const p = obj(input)
   if (typeof p.isDraft !== 'boolean') throw Error('Missing isDraft')
+  if (typeof p.isCrossRepository !== 'boolean') throw Error('Missing isCrossRepository')
   const commit = rows(obj(p.commits).nodes)[0]
   return {
     repo: str(obj(p.repository), 'nameWithOwner'),
@@ -122,6 +123,7 @@ export function pullRequest(input: unknown): PullRequest {
     title: str(p, 'title'),
     url: str(p, 'url'),
     draft: p.isDraft,
+    crossRepository: p.isCrossRepository,
     sha: opt(p.headRefOid) ?? undefined,
     head: str(p, 'headRefName'),
     base: str(p, 'baseRefName'),

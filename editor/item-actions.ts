@@ -1,4 +1,4 @@
-import { itemKey, statuses, type Item } from '../src/core/model'
+import { itemKey, type Item } from '../src/core/model'
 import {
   moveState,
   moveTimeout,
@@ -6,21 +6,17 @@ import {
   snoozeChoices,
   snoozeUntil,
   type Target,
-  type Move,
+  parseActions,
+  targets,
 } from '../src/core/actions'
 import { panel, ask } from './controls'
 import { el, button, labels, notice } from './dom'
 
-const targets = [...statuses, 'done', 'canceled'] as const
 const names = { ...labels, done: 'Done', canceled: 'Cancel' }
-type State = { moves: Record<string, Move>; sleeps: Record<string, number> }
 export async function readActions(demo: boolean) {
   const key = demo ? 'demo-actions' : 'actions'
   const stored = await orca.storage.get(key)
-  const state: State =
-    stored && typeof stored === 'object' && 'moves' in stored && 'sleeps' in stored
-      ? (stored as State)
-      : { moves: {}, sleeps: {} }
+  const state = parseActions(stored)
   return { state, save: () => orca.storage.set(key, state) }
 }
 export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redraw: () => void) {
@@ -38,11 +34,9 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
       const item = items.find((i) => itemKey(i) === key)
       const result = moveState(move, item?.status ?? closed[key], now)
       if (result === 'pending') deadlines.push(move.at + moveTimeout)
-      else {
+      else if (result === 'confirmed' || closed[key]) {
         delete state.moves[key]
         dirty = true
-        if (result === 'expired')
-          notice(item ? 'The bot did not apply the move · ' + item.title : 'Move request expired without confirmation.')
       }
     }
     for (const [key, end] of Object.entries(state.sleeps)) {
@@ -167,7 +161,10 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     syncList,
     pending(i: Item) {
       const m = state.moves[itemKey(i)]
-      return m ? 'Move to ' + names[m.target] + ' requested' : ''
+      if (!m) return ''
+      return moveState(m, i.status, Date.now()) === 'expired'
+        ? 'The bot did not apply the move to ' + names[m.target]
+        : 'Move to ' + names[m.target] + ' requested'
     },
   }
 }

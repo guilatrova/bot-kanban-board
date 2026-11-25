@@ -57,6 +57,7 @@ export interface PullRequest {
   number: number
   title: string
   url: string
+  crossRepository: boolean
   draft: boolean
   sha?: string
   head: string

@@ -43,7 +43,7 @@ The trusted worker runs Node.js with your account’s access. Live mode invokes 
 | Item refresh interval         | 30 seconds                             |
 | Pull request refresh interval | 90 seconds                             |
 
-**Demo data** defaults to off. Change it in the plugin settings, restart the plugin, and reopen the board in a local workspace. The demo worker uses synthetic records, runs no CLI commands and keeps its views and actions separate. It opens `.orca/bots-board/Demo.botsboard` in the focused workspace.
+**Demo data** defaults to off. Change it in the plugin settings, restart the plugin, and reopen the board. The demo worker uses synthetic records, runs no CLI commands and keeps its views and actions separate. Both modes open the same hidden board project in the application data directory. On a demo-only first run, add the folder shown by the setup message as an Orca folder project, then reopen the board.
 
 **Refresh** reads both sources immediately. A GitHub failure keeps the last successful pull request list with its age.
 

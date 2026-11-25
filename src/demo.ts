@@ -55,6 +55,7 @@ export function demoBoard(state: string | null = null) {
     title: 'Sample marker',
     url: 'https://github.com/orchard/sample/pull/1',
     isDraft: false,
+    isCrossRepository: false,
     headRefName: 'marker',
     baseRefName: 'main',
     body: 'Closes #42',

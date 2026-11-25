@@ -8,7 +8,7 @@ import { openBoard } from './board-file'
 import { avatar } from './avatars'
 import { jump } from './jump'
 import { demoBoard } from '../demo'
-import { openDemoBoard } from './board-file'
+import { parseActions, moveState } from '../core/actions'
 export default async function activate(orca: OrcaWorkerApi) {
   const demo = (await orca.settings.get('demo')) === true
 
@@ -45,14 +45,15 @@ export default async function activate(orca: OrcaWorkerApi) {
     prJob: Promise<void> | null = null
   function refreshItems() {
     return (itemJob ??= (async () => {
-      const actions = await orca.storage.get('actions')
-      const moves = actions && typeof actions === 'object' && 'moves' in actions ? actions.moves : null
+      const { moves } = parseActions(await orca.storage.get('actions'))
+      const now = Date.now()
       const closing = new Set(
-        Object.entries(moves || {})
+        Object.entries(moves)
           .filter(
-            ([, m]) => m && typeof m === 'object' && 'target' in m && (m.target === 'done' || m.target === 'canceled'),
+            ([, move]) =>
+              (move.target === 'done' || move.target === 'canceled') && moveState(move, undefined, now) === 'pending',
           )
-          .map(([k]) => k),
+          .map(([key]) => key),
       )
       data.computers = await computers(await path('orcaPath'), closing, (computer) => {
         const position = data.computers.findIndex((previous) => previous.key === computer.key)
@@ -104,7 +105,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   }
   const refresh = () => Promise.all([refreshItems(), refreshPrs()])
   orca.panels.handle('board.get', async (_, context) => {
-    if (!demo && !data.itemsAt) await refreshItems()
+    if (!demo && (itemJob || !data.itemsAt)) await refreshItems()
     publish(context.panel.id)
     data.focus = false
     return null
@@ -223,8 +224,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   for (const focus of [false, true])
     orca.commands.register(focus ? 'bots-board.needs-you' : 'bots-board.open', async () => {
       data.focus = focus
-      if (demo) await openDemoBoard(orca)
-      else await openBoard(orca, await path('orcaPath'))
+      await openBoard(orca, demo ? null : await path('orcaPath'))
       if (focus) orca.panels.post('board.focus', null)
     })
   if (demo) return

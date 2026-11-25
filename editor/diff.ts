@@ -1,4 +1,4 @@
-import { el, external } from './dom'
+import { el, external, describeFailure } from './dom'
 import { prKey, type FileChange, type MappedPr } from '../src/core/model'
 export async function showFiles(parent: HTMLElement, pr: MappedPr) {
   parent.textContent = 'Reading changed files…'
@@ -10,7 +10,10 @@ export async function showFiles(parent: HTMLElement, pr: MappedPr) {
         { key: prKey(pr), updated: pr.updated, offset: json.length },
         { timeoutMs: 60000 },
       )
-      if (!result.ok) throw Error([result.command, result.message, result.next].join(' · '))
+      if (!result.ok) {
+        parent.replaceChildren(el('p', describeFailure(result)), external('Files on GitHub', pr.url + '/files'))
+        return
+      }
       json += result.value.data
       if (result.value.end) break
     }
@@ -41,6 +44,16 @@ export async function showFiles(parent: HTMLElement, pr: MappedPr) {
       parent.append(details)
     }
   } catch (e) {
-    parent.replaceChildren(el('p', String(e)), external('Files on GitHub', pr.url + '/files'))
+    parent.replaceChildren(
+      el(
+        'p',
+        describeFailure({
+          command: 'Read PR files',
+          message: e instanceof Error ? e.message : String(e),
+          next: 'Reopen the drawer to retry.',
+        }),
+      ),
+      external('Files on GitHub', pr.url + '/files'),
+    )
   }
 }

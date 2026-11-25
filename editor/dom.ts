@@ -1,3 +1,13 @@
+import type { Failure } from '../src/core/model'
+function hideIds(text: string) {
+  return text.replace(
+    /\b(?:orca_session_id|session|folder|dispatch|workspace|bot|id):[^\s,)]+|\b(?:ctx|task|term|run|dispatch|session)_[\w-]+|\b[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b/gi,
+    '…',
+  )
+}
+export function describeFailure(f: Pick<Failure, 'command' | 'message' | 'next'>) {
+  return hideIds([f.command, f.message, f.next].join(' · '))
+}
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = '') {
   const node = document.createElement(tag)
   node.textContent = text
@@ -20,7 +30,7 @@ export function notice(error: unknown) {
     node.setAttribute('role', 'status')
     document.body.append(node)
   }
-  node.textContent = String(error).replace(/[\da-f]{8}-[\da-f-]{27,}/gi, '…')
+  node.textContent = hideIds(String(error))
 }
 export const age = (time: number | string) => {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(time).getTime()) / 60000))

@@ -32,6 +32,7 @@ export function drawers() {
   }
   function item(i: Item, prs: MappedPr[], trees: Workspace[], card: HTMLElement) {
     open(card)
+    body.style.setProperty('--tone', 'var(--' + i.status + ')')
     body.append(
       badge(i.computer, i.bot),
       el('small', i.bot + ' · Item #' + i.number + ' · ' + age(i.updated)),
@@ -67,6 +68,7 @@ export function drawers() {
   }
   function pr(p: MappedPr, card: HTMLElement) {
     open(card)
+    body.style.setProperty('--tone', 'var(--prs)')
     const match = p.items[0] ?? p.workspaces[0]
     if (match) body.append(badge(match.computer, match.bot), el('small', match.bot))
     body.append(
@@ -79,7 +81,15 @@ export function drawers() {
     )
     section('Branch', p.head + ' → ' + p.base)
     section('Closes', p.closes.map(prKey).join(', '))
-    section('Matched by', p.how)
+    if (p.how)
+      section(
+        'Matched by',
+        {
+          branch: 'The workspace branch matches this pull request.',
+          item: 'An Item names this pull request.',
+          issue: 'An Item names an issue this pull request closes.',
+        }[p.how],
+      )
     section('Items', p.items.map((i) => i.bot + ' #' + i.number + ' · ' + i.title).join('\n'))
     for (const w of p.workspaces) workspace(w)
     const files = el('div')

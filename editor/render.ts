@@ -1,7 +1,7 @@
 import { buildBoard, toggleBot } from '../src/core/board'
 import { botKey, itemKey, prKey, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, labels, badge, prState } from './dom'
+import { el, button, age, labels, badge, prState, describeFailure } from './dom'
 import { drawers } from './drawer'
 type Row = Item | MappedPr
 export function view(initial: string[]) {
@@ -54,13 +54,7 @@ export function view(initial: string[]) {
     hosts.replaceChildren(
       ...board.computers.map((c) => {
         const chip = el('span', c.name + ' · ' + (c.error ? 'Unreachable' : c.count), 'chip')
-        if (c.error)
-          chip.append(
-            el(
-              'small',
-              [c.error.command, c.error.message, c.error.next].join(' · ').replace(/[\da-f]{8}-[\da-f-]{27,}/gi, '…'),
-            ),
-          )
+        if (c.error) chip.append(el('small', describeFailure(c.error)))
         return chip
       }),
     )
@@ -173,12 +167,7 @@ export function view(initial: string[]) {
       if (key === 'prs') {
         heading.textContent = labels.prs + ' · ' + prs.length
         if (data.error) {
-          prError.textContent = [
-            data.error.command,
-            data.error.message,
-            data.error.next,
-            data.prsAt ? 'Last read ' + age(data.prsAt) : '',
-          ]
+          prError.textContent = [describeFailure(data.error), data.prsAt ? 'Last read ' + age(data.prsAt) : '']
             .filter(Boolean)
             .join(' · ')
           nodes.push(prError)

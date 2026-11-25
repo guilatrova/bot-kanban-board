@@ -1,5 +1,5 @@
 import type { Failure, Source } from '../../core/model'
-import { runCli } from '../cli'
+import { runCli, commandLabel } from '../cli'
 class ReadFailure extends Error {
   constructor(readonly failure: Failure) {
     super(failure.message)
@@ -14,7 +14,7 @@ export function reader(binary: 'orca' | 'gh', path: string) {
     } catch (error) {
       throw new ReadFailure({
         ok: false,
-        command: [binary, ...args.slice(0, binary === 'gh' ? 1 : 3)].join(' '),
+        command: commandLabel(binary, args),
         message: String(error),
         next: 'Check the CLI version and refresh the board.',
       })

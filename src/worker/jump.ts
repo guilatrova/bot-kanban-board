@@ -32,12 +32,14 @@ export async function jump(
       agents.find((a) => a.workspace === bot.name && a.kind === 'chat')
     if (!row || typeof row.worktreeId !== 'string') throw Error('Folder unavailable')
     await orca.host.call('workspace.open', { workspaceId: row.worktreeId })
-  } catch {
+  } catch (error) {
     await promisify(execFile)(
       process.platform === 'darwin' ? 'open' : 'xdg-open',
       ['orca://bot/' + encodeURIComponent(bot.id)],
       { timeout: 10000 },
     )
+    const reason = error instanceof Error ? error.message : String(error)
+    return `Could not open the bot's workspace (${reason}). Opened the bot link instead. Switch to the bot in Orca's sidebar to answer.`
   }
   return 'Open ' + (item?.chat || 'the bot chat') + ' in Orca to answer.'
 }

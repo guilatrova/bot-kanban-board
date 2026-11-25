@@ -37,7 +37,16 @@ export function activate(orca: OrcaWorkerApi) {
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
         .filter((i) => i.status === 'needs_you').length
-      await orca.host.call('statusBar.update', { id: 'needs-you', text: 'Needs you ' + n })
+      const unreachable = data.computers.filter((c) => !c.source.ok).length
+      const hasCount = data.computers.length > unreachable
+      const text = hasCount
+        ? 'Needs you ' + n + (unreachable ? ' · ' + unreachable + ' unreachable' : '')
+        : 'Needs you ?'
+      await orca.host.call('statusBar.update', {
+        id: 'needs-you',
+        text,
+        tone: hasCount ? (unreachable ? 'warning' : 'neutral') : 'danger',
+      })
     })().finally(() => {
       itemJob = null
     }))

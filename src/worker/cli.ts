@@ -36,10 +36,14 @@ async function binaryPath(binary: Binary, configured: string): Promise<string> {
   throw new Error(`Cannot find executable ${binary}`)
 }
 
+export function commandLabel(binary: Binary, args: string[]) {
+  return [binary, ...args.slice(0, binary === 'orca' ? 3 : 1).filter((arg) => !arg.startsWith('-'))].join(' ')
+}
+
 export async function runCli(binary: Binary, args: string[], configured = ''): Promise<Source<unknown>> {
-  const command = [binary, ...args.slice(0, binary === 'orca' ? 3 : 1).filter((arg) => !arg.startsWith('-'))].join(' ')
+  const command = commandLabel(binary, args)
   const env = { ...process.env }
-  if (sessionKeys.some((key) => key in process.env)) {
+  if (sessionKeys.some((key) => key in env)) {
     return {
       ok: false,
       command,
@@ -47,7 +51,6 @@ export async function runCli(binary: Binary, args: string[], configured = ''): P
       next: 'Open it from the Orca desktop app as yourself.',
     }
   }
-  for (const key of sessionKeys) delete env[key]
   try {
     const path = await binaryPath(binary, configured)
     const { stdout } = await execute(path, args, { env, timeout: 45_000, maxBuffer: 64 * 1024 * 1024 })

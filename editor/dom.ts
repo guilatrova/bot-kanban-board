@@ -68,12 +68,13 @@ export function prState(pr: { draft: boolean; mergeable: string }) {
 export function prPill(pr: { draft: boolean; mergeable: string }) {
   return el('mark', prState(pr), pr.draft ? 'draft' : pr.mergeable === 'CONFLICTING' ? 'conflict' : 'ready')
 }
+export async function openExternal(url: string) {
+  if (new URL(url).protocol !== 'https:') throw Error('Invalid GitHub URL')
+  const result = await orca.shell?.openExternal(url)
+  if (!result?.opened) notice('GitHub did not open. Allow the link in Orca and try again.')
+}
 export function external(label: string, url: string) {
-  return button(label, async () => {
-    if (new URL(url).protocol !== 'https:') throw Error('Invalid GitHub URL')
-    const result = await orca.shell?.openExternal(url)
-    if (!result?.opened) notice('GitHub did not open. Allow the link in Orca and try again.')
-  })
+  return button(label, () => openExternal(url))
 }
 const pictures = new Map<string, { time: number; value: Promise<string | null> }>()
 async function loadAvatar(computer: string, bot: string) {
@@ -113,4 +114,11 @@ export function badge(computer: string, bot: string) {
     img.src = src
   })
   return span
+}
+
+export function patch(parent: HTMLElement, children: HTMLElement[]) {
+  for (const [index, node] of children.entries()) {
+    if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] ?? null)
+  }
+  while (parent.children.length > children.length) parent.lastElementChild?.remove()
 }

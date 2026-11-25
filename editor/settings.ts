@@ -1,12 +1,22 @@
 import { mergeMethods, methodLabels, type MergeMethod, type MergePreferences } from '../src/core/merge'
+import { botKey, type Computer } from '../src/core/model'
 import { button, el, external, notice } from './dom'
 import { icon } from './lanes'
 import { popover } from './popover'
 export async function readMergeSettings(demo: boolean) {
   const key = demo ? 'demo-merge-preferences' : 'merge-preferences'
   const state = await orca.storage.get(key)
-  const prefs: MergePreferences = { mergeMethod: 'squash', askBeforeMerging: true }
+  const prefs: MergePreferences = {
+    mergeMethod: 'squash',
+    askBeforeMerging: true,
+    tellBot: false,
+    botName: '',
+    computer: 'local',
+  }
   if (state && typeof state === 'object' && !Array.isArray(state)) {
+    prefs.tellBot = state.tellBot === true
+    prefs.botName = typeof state.botName === 'string' ? state.botName : ''
+    prefs.computer = typeof state.computer === 'string' ? state.computer : 'local'
     prefs.mergeMethod = mergeMethods.find((m) => m === state.mergeMethod) ?? prefs.mergeMethod
     prefs.askBeforeMerging = state.askBeforeMerging !== false
   }
@@ -17,7 +27,7 @@ export async function readMergeSettings(demo: boolean) {
     },
   }
 }
-export function settings(saved: MergePreferences, update: () => void) {
+export function settings(saved: MergePreferences, update: () => void, computers: () => Computer[]) {
   let menu: ReturnType<typeof popover> | undefined
   const gear = button(
     '',
@@ -45,6 +55,30 @@ export function settings(saved: MergePreferences, update: () => void) {
         saved.askBeforeMerging = ask.checked
         update()
       }
+      const tell = el('input', '', 'switch after-switch'),
+        bots = el('select')
+      tell.type = 'checkbox'
+      tell.checked = saved.tellBot
+      bots.add(new Option('Choose a bot', ''))
+      for (const c of computers())
+        if (c.source.ok)
+          for (const b of c.source.value.bots) {
+            bots.add(new Option(b.name + (c.key === 'local' ? '' : ' · ' + c.name), botKey(c.key, b.name)))
+          }
+      bots.value = botKey(saved.computer, saved.botName)
+      if (bots.selectedIndex < 0) bots.selectedIndex = 0
+      bots.disabled = !tell.checked
+      bots.onchange = () => {
+        const choice = bots.value ? (JSON.parse(bots.value) as [string, string]) : ['local', '']
+        saved.computer = choice[0]!
+        saved.botName = choice[1]!
+        update()
+      }
+      tell.onchange = () => {
+        saved.tellBot = tell.checked
+        bots.disabled = !tell.checked
+        update()
+      }
       const credit = external('Who created this?', 'https://github.com/guilatrova')
       credit.className = 'credit'
       menu.node.append(
@@ -56,6 +90,10 @@ export function settings(saved: MergePreferences, update: () => void) {
           'Off: clean pull requests merge in one step. Warnings and conflicts always ask.',
           ask,
         ),
+        el('hr'),
+        el('div', 'After a merge', 'mlabel'),
+        row('Tell a bot', 'One Orca message per merge, or one for a whole batch', tell),
+        row('Which bot', '', bots),
         el('hr'),
         credit,
       )

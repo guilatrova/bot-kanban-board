@@ -1,3 +1,4 @@
+import { scrollArea } from './scroll-area'
 import { badge, el, labels, notice } from './dom'
 import { itemLanes, botKey } from '../src/core/model'
 export const laneKeys = [...itemLanes, 'prs', 'merged'] as const
@@ -40,6 +41,7 @@ export function makeLane(key: Lane, collapsed: Set<string>, save: () => Promise<
     photos = el('div', '', 'railav'),
     fold = el('span', '‹', 'fold'),
     list = el('div', '', 'list')
+  scrollArea(list)
   title.append(el('span', labels[key]))
   heading.append(title, count, fold, photos)
   heading.setAttribute('role', 'button')

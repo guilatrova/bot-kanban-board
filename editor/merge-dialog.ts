@@ -11,11 +11,7 @@ import {
 import { prKey, type MappedPr, type Source } from '../src/core/model'
 import { el, button, describeFailure, notice } from './dom'
 
-export function mergeDialog(
-  saved: MergePreferences,
-  update: () => void,
-  start: (pr: MappedPr, method: MergeMethod, warnings: Warning[]) => void,
-) {
+export function mergeDialog(saved: MergePreferences, update: () => void) {
   const modal = el('dialog', '', 'merge-dialog')
   modal.setAttribute('aria-label', 'Confirm pull request merge')
   document.body.append(modal)
@@ -34,8 +30,18 @@ export function mergeDialog(
     )
       modal.close()
   }
-  return (pr: MappedPr, facts?: Source<RepositoryFacts>, closing = false) => {
-    if (modal.open) return
+  return (
+    pr: MappedPr,
+    facts?: Source<RepositoryFacts>,
+    closing = false,
+    chosen?: (method: MergeMethod, warnings: Warning[]) => void,
+    dismiss?: () => void,
+  ) => {
+    if (modal.open) {
+      dismiss?.()
+      return
+    }
+    modal.onclose = () => dismiss?.()
     active = prKey(pr)
 
     const actions = el('footer'),
@@ -113,12 +119,13 @@ export function mergeDialog(
       button(
         'Confirm merge',
         () => {
+          modal.onclose = null
           modal.close()
           if (checkbox.checked) {
             saved.askBeforeMerging = false
             update()
           }
-          start(pr, select.value as MergeMethod, assessment.warnings)
+          chosen?.(select.value as MergeMethod, assessment.warnings)
         },
         assessment.warnings.some((w) => w.danger) ? 'confirm danger' : 'confirm',
       ),

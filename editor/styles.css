@@ -477,18 +477,6 @@ pre {
 .merge-steps [data-state='failed'] {
   color: var(--bad);
 }
-@media (prefers-reduced-motion: no-preference) {
-  .landed {
-    animation: land 0.5s ease-out;
-  }
-  @keyframes land {
-    from {
-      transform: translateY(-12px);
-      opacity: 0.3;
-      background: var(--merged);
-    }
-  }
-}
 .controls > button,
 .controls input,
 .controls textarea,
@@ -1222,10 +1210,6 @@ article.merging {
   gap: 10px;
   padding: 11px 12px;
 }
-.toast.fading {
-  opacity: 0;
-  transform: translateY(6px);
-}
 .toast .tbody {
   display: grid;
   flex: 1;
@@ -1244,83 +1228,582 @@ article.merging {
   padding: 0;
   font-size: 11.5px;
 }
-.toast[data-state='running'] small {
-  white-space: nowrap;
+:root {
+  --thumb: #ffffff26;
+  --thumb-hover: #ffffff4d;
+}
+html.light {
+  --thumb: #00000026;
+  --thumb-hover: #0000004d;
+}
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) {
+    --thumb: #00000026;
+    --thumb-hover: #0000004d;
+  }
+}
+.scroll-area {
+  overflow-x: hidden;
+}
+.scroll-area.more-below {
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+}
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+  height: 0;
+}
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-area::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+.scroll-area:hover::-webkit-scrollbar-thumb {
+  background-color: var(--thumb);
+}
+.scroll-area:hover::-webkit-scrollbar-thumb:hover {
+  background-color: var(--thumb-hover);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-area {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scroll-area:hover {
+    scrollbar-color: var(--thumb) transparent;
+  }
+}
+
+.check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--faint);
+  background: var(--card);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+  padding: 0;
+}
+article:hover .check,
+.sel-mode .check {
+  opacity: 1;
+}
+article.sel {
+  border-color: var(--pr);
+  background: var(--selected-bg);
+  box-shadow: 0 0 0 1px var(--pr) inset;
+}
+article.sel .check {
+  background: var(--pr);
+  border-color: var(--pr);
+}
+.check svg {
+  width: 12px;
+  height: 12px;
+  stroke: #14171b;
+  stroke-width: 3;
+  fill: none;
+  opacity: 0;
+}
+article.sel .check svg {
+  opacity: 1;
+}
+article.lift {
+  opacity: 0.35;
+  transform: scale(0.97);
+}
+article.gone {
+  transition:
+    opacity 0.22s,
+    transform 0.22s var(--ease),
+    height 0.3s var(--ease),
+    margin 0.3s var(--ease),
+    padding 0.3s var(--ease);
+  opacity: 0;
+  transform: scale(0.94);
+}
+
+/* selection bar */
+.selbar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 8px 8px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-shadow: var(--shadow);
+  transform: translateY(16px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.25s var(--spring),
+    opacity 0.2s;
+  z-index: 5;
+}
+.sel-mode .list {
+  padding-bottom: 64px;
+}
+.selbar.on {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+.selbar .c {
+  flex: 1;
+  font-size: 13px;
+}
+.selbar button {
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: none;
+  color: var(--dim);
+}
+.selbar button.go {
+  background: var(--run);
+  color: #0e1013;
+  font-weight: 600;
+}
+
+/* Drag deck */
+.deck {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 50;
+  width: 280px;
+}
+.deck .dc {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 280px;
+  background: var(--card-hover);
+  border: 1px solid var(--pr);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+  transition:
+    transform 0.32s var(--spring),
+    opacity 0.2s;
+}
+.deck .dc .t {
+  font-weight: 500;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.deck .badge {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--pr);
+  color: #14171b;
+  font-weight: 700;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  padding: 0 7px;
+  z-index: 9;
+  transform: scale(0);
+  transition: transform 0.3s var(--spring) 0.12s;
+}
+.deck.ready .badge {
+  transform: scale(1);
+}
+/* Merge queue */
+.queue {
+  flex: none;
+  margin: 0 10px 8px;
+  border-radius: 8px;
+  background: var(--queue-bg);
   overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition:
+    max-height 0.35s var(--ease),
+    opacity 0.35s var(--ease);
+}
+.qbody:hover::-webkit-scrollbar-thumb {
+  background-color: #ffffff26;
+}
+.qrow .nm {
+  min-width: 0;
+}
+.qrow .txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.qrow .txt .nm {
+  flex: none;
+  overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
-.tspin {
-  border: 2px solid var(--line);
-  border-top-color: var(--run);
-  animation: 0.8s linear infinite spin;
-  border-radius: 50%;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
+.qrow .txt .st {
+  font-size: 11.5px;
 }
-@keyframes spin {
+.qrow .rt {
+  flex: none;
+}
+.qh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+}
+.qh b {
+  color: var(--fg);
+  font-weight: 600;
+}
+.qbar {
+  height: 2px;
+  background: var(--line);
+  position: relative;
+}
+.qbar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--run);
+  width: 0;
+  transition: width 0.4s var(--ease);
+}
+.qrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid #ffffff08;
+  transition:
+    background 0.3s,
+    opacity 0.3s,
+    transform 0.3s var(--ease);
+}
+.qrow:last-child {
+  border-bottom: 0;
+}
+.qrow .nm {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.qrow .st {
+  font-size: 12px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+.qrow.run {
+  background: var(--queue-run);
+}
+.qrow.run .st {
+  color: var(--run);
+}
+.qrow.retry .st {
+  color: var(--needs);
+}
+.qrow.fail {
+  background: var(--bad-soft);
+}
+.qrow.fail .st {
+  color: var(--bad);
+}
+.qrow.done {
+  opacity: 0;
+  transform: translateX(12px);
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-width: 0;
+  transition:
+    opacity 0.2s,
+    transform 0.2s,
+    height 0.25s 0.15s,
+    padding 0.25s 0.15s;
+}
+.ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.spin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #55c2a244;
+  border-top-color: var(--run);
+  animation: sp 0.8s linear infinite;
+}
+@keyframes sp {
   to {
     transform: rotate(360deg);
   }
 }
-.tmark {
-  display: grid;
-  background: var(--run-soft);
-  color: var(--run);
+.qrow .dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  flex: none;
-  place-items: center;
-  width: 18px;
-  height: 18px;
+  background: var(--faint);
 }
-.toast[data-state='failed'] .tmark {
-  background: var(--bad-soft);
+.qrow .rt {
+  border: 1px solid var(--bad);
   color: var(--bad);
-}
-.toast[data-state='failed'] {
-  box-shadow:
-    var(--shadow),
-    inset 3px 0 0 var(--bad),
-    inset 0 0 0 1px var(--line);
-}
-.tmark svg,
-.tclose svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  width: 12px;
-  height: 12px;
-}
-.tactions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-.tactions button {
-  background: var(--card);
+  background: none;
   border-radius: 5px;
-  padding: 4px 10px;
+  padding: 2px 8px;
   font-size: 12px;
 }
-.tactions .confirm {
-  background: var(--run);
-  color: var(--bg);
+.qrow .rt:hover {
+  background: var(--bad-soft);
 }
-.tclose {
-  display: grid;
-  color: var(--faint);
-  background: 0 0;
+
+.merged-card .gh {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border-radius: 4px;
-  flex: none;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
 }
-.tclose:hover {
+.merged-card .gh svg {
+  width: 10px;
+  height: 10px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.merged-card:hover .gh svg,
+.merged-card .gh:focus-visible svg {
+  opacity: 1;
+}
+.merged-card .gh:hover {
   color: var(--fg);
-  background: var(--card);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.merged-card .gh:focus-visible {
+  outline: 2px solid var(--run);
+  outline-offset: 2px;
+}
+.merged-card.arrive {
+  animation: arrive 0.9s var(--ease);
+}
+@keyframes arrive {
+  0% {
+    background: var(--arrive-start);
+    box-shadow: inset 3px 0 0 var(--run);
+  }
+  60% {
+    background: var(--arrive-mid);
+    box-shadow: inset 3px 0 0 var(--run);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+.merged-card .ck {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  color: var(--run);
+  opacity: 0;
+}
+.merged-card.arrive .ck {
+  animation: ck 0.9s var(--spring);
+}
+@keyframes ck {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.slot {
+  height: 0;
+  transition: height 0.32s var(--ease);
+}
+.morph {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--card-hover);
+  border: 1px solid var(--run);
+  border-radius: var(--r);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: all 0.55s cubic-bezier(0.65, 0, 0.25, 1);
+}
+.morph .t {
+  padding: 10px 12px;
+  font-weight: 500;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root {
+  --spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --queue-bg: #11161a;
+  --queue-run: #55c2a20d;
+  --arrive-start: #55c2a233;
+  --arrive-mid: #55c2a214;
+  --selected-bg: #211b29;
+  --drag-bg: #16201d;
+  --drag-ring: #55c2a266;
+  --morph-bg: #18241f;
+}
+html.light {
+  --queue-bg: var(--raise);
+  --queue-run: #107a5c0d;
+  --arrive-start: #107a5c26;
+  --arrive-mid: #107a5c12;
+  --selected-bg: linear-gradient(var(--pr-soft), var(--pr-soft)), var(--card);
+  --drag-bg: linear-gradient(var(--run-soft), var(--run-soft)), var(--lane);
+  --drag-ring: #107a5c66;
+  --morph-bg: linear-gradient(var(--run-soft), var(--run-soft)), var(--card);
+}
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) {
+    --queue-bg: var(--raise);
+    --queue-run: #107a5c0d;
+    --arrive-start: #107a5c26;
+    --arrive-mid: #107a5c12;
+    --selected-bg: linear-gradient(var(--pr-soft), var(--pr-soft)), var(--card);
+    --drag-bg: linear-gradient(var(--run-soft), var(--run-soft)), var(--lane);
+    --drag-ring: #107a5c66;
+    --morph-bg: linear-gradient(var(--run-soft), var(--run-soft)), var(--card);
+  }
+}
+
+.lane[data-key='merged'].drag-over {
+  background: var(--drag-bg);
+  box-shadow: inset 0 0 0 1px var(--drag-ring);
+}
+.multi-drag .zone.danger,
+.rail .queue,
+.rail .selbar {
+  display: none;
+}
+.queue:not(.on) {
+  margin-bottom: 0;
+}
+.qbody {
+  overflow-y: auto;
+  max-height: 240px;
+}
+.qrow.retry .dot {
+  background: var(--needs);
+}
+.qrow.fail .ic {
+  color: var(--bad);
+}
+.qrow.done .ic {
+  color: var(--run);
+}
+[data-key='prs'] article .meta {
+  padding-right: 20px;
+}
+article.sel,
+article.lift,
+article.gone {
+  animation: none;
+}
+article.gone {
+  overflow: hidden;
+  min-height: 0;
+}
+article .check:focus-visible {
+  opacity: 1;
+}
+.merged-card {
+  position: relative;
+}
+.gh {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+}
+.after-switch {
+  width: 32px;
+  height: 18px;
+}
+.after-switch::after {
+  width: 14px;
+  height: 14px;
+  background: white;
+  transition: transform 0.2s var(--spring);
+}
+.after-switch:checked::after {
+  background: white;
+  transform: translateX(14px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .deck *,
+  .selbar,
+  .queue,
+  .qrow,
+  .qbar i,
+  .morph,
+  .slot,
+  .ck,
+  .merged-card.arrive,
+  .spin {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+.queue.on {
+  opacity: 1;
+  max-height: 320px;
+}
+
+.merged-card time {
+  display: inline;
+  color: inherit;
+  font: inherit;
+}
+.qrow.merged .ic {
+  color: var(--run);
 }

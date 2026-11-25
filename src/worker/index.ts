@@ -2,10 +2,11 @@ import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot, Progress } from '../protocol'
 import { prKey } from '../core/model'
 import { computers } from './sources/orca'
-import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
-import { github, files, mergePr, closePr, readPull } from './sources/github'
+import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
+import { github, files, mergePr, closePr, readRepository, readPull } from './sources/github'
 import { stackOrder } from '../core/stacks'
 import { openBoard } from './board-file'
+import { sendBotMessage } from './bot-message'
 import { avatars } from './avatars'
 import { notifications } from './bells'
 import { jump } from './jump'
@@ -139,12 +140,19 @@ export default async function activate(orca: OrcaWorkerApi) {
     return { index, count, data: json.slice(index * 32000, (index + 1) * 32000) }
   })
   orca.panels.handle('pr.read', async (input) => {
-    const live = demo ? undefined : await readPull(await path('ghPath'), input)
+    const ghPath = await path('ghPath')
+    const { repo, number } = input
+    const live = demo ? undefined : await readPull(ghPath, { repo, number })
+    if (live?.closed) return { closed: true as const, merged: false as const }
     if (live?.merged || (demo && data.merged.some((p) => prKey(p) === prKey(input)))) {
       if (live?.merged) recordMerged(live.row)
       return { merged: true as const }
     }
-    if (!demo) await refreshPrs()
+    if (input.prOnly && live?.pr) {
+      data.repos[repo] = await readRepository(ghPath, repo)
+      const index = data.prs.findIndex((p) => prKey(p) === prKey(input))
+      if (index >= 0) data.prs[index] = live.pr
+    } else if (!demo) await refreshPrs()
     const pr = live?.pr ?? data.prs.find((p) => prKey(p) === prKey(input))
     const facts = data.error || data.repos[input.repo]
     if (!pr || !facts) throw Error('Pull request unavailable.')
@@ -171,6 +179,11 @@ export default async function activate(orca: OrcaWorkerApi) {
       await path('orcaPath'),
     )
   })
+  orca.panels.handle(
+    'bot.tell',
+    async (input) =>
+      demo || sendBotMessage(await path('orcaPath'), data.computers, input, (message) => orca.log(message)),
+  )
   orca.panels.handle('board.jump', async (input) =>
     demo ? 'Demo chat selected.' : jump(orca, data.computers, await path('orcaPath'), input),
   )
@@ -246,7 +259,6 @@ export default async function activate(orca: OrcaWorkerApi) {
           title: pr.title,
           url: pr.url,
           mergedAt: new Date().toISOString(),
-          notification: manualBotNotification,
         }
         recordMerged(row)
       }
@@ -254,7 +266,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     } finally {
       data.running = data.running?.filter((k) => k !== key)
       publish()
-      if (!demo)
+      if (!demo && !input.prOnly)
         void (async () => {
           await prJob
           await refreshPrs()

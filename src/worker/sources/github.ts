@@ -6,6 +6,23 @@ import { obj, rows, str, num, pullRequest, fileChange } from '../../core/normali
 import { reader, source } from './read'
 const pullFields = `number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}}`
 export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ ${pullFields} }}}}`
+export function readRepository(path: string, repo: string) {
+  const read = reader('gh', path)
+  return source('gh api repos', () =>
+    read(['api', 'repos/' + repo], (v) => {
+      const info = obj(v)
+      return {
+        defaultBranch: str(info, 'default_branch'),
+        push: obj(info.permissions).push === true,
+        methods: mergeMethods.filter(
+          (m) =>
+            info[{ squash: 'allow_squash_merge', merge: 'allow_merge_commit', rebase: 'allow_rebase_merge' }[m]] ===
+            true,
+        ),
+      }
+    }),
+  )
+}
 export function github(path: string) {
   const read = reader('gh', path)
   return source('gh api graphql', async () => {
@@ -41,20 +58,7 @@ export function github(path: string) {
     }
     const repos: Record<string, Source<RepositoryFacts>> = {}
     const loadRepository = async (repo: string) => {
-      repos[repo] = await source('gh api repos', () =>
-        read(['api', 'repos/' + repo], (v) => {
-          const info = obj(v)
-          return {
-            defaultBranch: str(info, 'default_branch'),
-            push: obj(info.permissions).push === true,
-            methods: mergeMethods.filter(
-              (m) =>
-                info[{ squash: 'allow_squash_merge', merge: 'allow_merge_commit', rebase: 'allow_rebase_merge' }[m]] ===
-                true,
-            ),
-          }
-        }),
-      )
+      repos[repo] = await readRepository(path, repo)
     }
     const now = new Date()
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -179,6 +183,7 @@ export function readPull(path: string, input: { repo: string; number: number }) 
           merged: true as const,
           row: { ...input, title: str(pr, 'title'), url: str(pr, 'url'), mergedAt: str(pr, 'mergedAt') },
         }
+      if (pr.state === 'CLOSED') return { closed: true as const, merged: false as const }
       if (pr.state !== 'OPEN') throw Error('Pull request is no longer open.')
       return { merged: false as const, pr: pullRequest(pr) }
     },

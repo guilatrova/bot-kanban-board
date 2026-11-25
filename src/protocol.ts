@@ -1,5 +1,12 @@
 import type { MergedPr, MergeMethod, RepositoryFacts } from './core/merge'
+export interface BotMessage {
+  computer: string
+  botName: string
+  subject: string
+  body: string
+}
 export interface MergeInput {
+  prOnly?: boolean
   repo: string
   number: number
   updated: string
@@ -33,12 +40,14 @@ export interface Snapshot {
 export type Chunk = { index: number; count: number; data: string }
 declare module 'orca' {
   interface PluginRequests {
+    'bot.tell': { input: BotMessage; output: boolean }
     'board.get': { input: { index: number; fresh?: boolean }; output: Chunk }
     'pr.read': {
-      input: { repo: string; number: number }
+      input: { repo: string; number: number; prOnly?: boolean }
       output:
-        | { merged: true }
-        | { merged: false; pr: PullRequest & { behind?: string }; facts: Source<RepositoryFacts> }
+        | { merged: false; closed: true }
+        | { merged: true; closed?: false }
+        | { merged: false; closed?: false; pr: PullRequest & { behind?: string }; facts: Source<RepositoryFacts> }
     }
     'board.refresh': { input: undefined; output: null }
     'avatar.get': {

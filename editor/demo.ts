@@ -1,7 +1,6 @@
 import { stackOrder } from '../src/core/stacks'
 import type { Bell } from '../src/core/bells'
 import { prKey } from '../src/core/model'
-import { manualBotNotification } from '../src/core/merge'
 import { demoBoard, demoMerge } from '../src/demo'
 import type { OrcaFrameApi } from 'orca/frame'
 const state = new URLSearchParams(location.search).get('state')
@@ -9,6 +8,7 @@ const data = demoBoard(state)
 data.bells = JSON.parse(sessionStorage.getItem('demo-bells') || '[]') as Bell[]
 data.notificationsOff = state === 'notifications-off'
 const handlers = new Map<string, (v: unknown) => void>()
+const attempts = new Map<number, number>()
 let failNext = state === 'failure'
 const send = () => handlers.get('board.changed')?.(null)
 const fake = {
@@ -19,6 +19,7 @@ const fake = {
   plugin: {
     on: (k: string, fn: (v: unknown) => void) => handlers.set(k, fn),
     request: async (k: string, input?: { repo: string; number: number; bell: Bell; on: boolean }) => {
+      if (k === 'bot.tell') return state !== 'send-failure'
       if (k === 'board.get' && state === 'loading') return new Promise(() => {})
       if (k === 'board.get') return { index: 0, count: 1, data: JSON.stringify(data) }
       if (k === 'pr.read' && input) {
@@ -44,7 +45,12 @@ const fake = {
       }
       if (k === 'pr.merge' && input) {
         const row = data.prs.find((p) => p.repo === input.repo && p.number === input.number)!
-        const fail = failNext
+        const attempt = (attempts.get(row.number) ?? 0) + 1
+        attempts.set(row.number, attempt)
+        const fail =
+          failNext ||
+          ((state === 'queue-failure' || state === 'queue50') &&
+            ((row.number === 10 && attempt === 1) || (row.number === 11 && attempt <= 4)))
         failNext = false
         const result = await demoMerge(
           row,
@@ -58,7 +64,6 @@ const fake = {
         data.merged.unshift({
           ...row,
           mergedAt: new Date().toISOString(),
-          notification: manualBotNotification,
         })
         data.prs = data.prs.filter((p) => p !== row)
         data.total--
@@ -85,7 +90,16 @@ const fake = {
       return null
     },
   },
-  shell: { openExternal: (url: string) => ({ opened: Boolean(window.open(url, '_blank', 'noopener')) }) },
+  shell: {
+    openExternal: (url: string) => {
+      const tab = window.open('about:blank', '_blank')
+      if (tab) {
+        tab.opener = null
+        tab.location.replace(url)
+      }
+      return { opened: Boolean(tab) }
+    },
+  },
 }
 window.orca = {
   ...fake,

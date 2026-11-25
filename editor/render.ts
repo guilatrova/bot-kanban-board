@@ -1,12 +1,16 @@
 import { mergeToasts } from './merge-toasts'
 import { settings, type readMergeSettings } from './settings'
-import { canMergeWithoutDialog, checksLabel } from '../src/core/merge'
+import { land, mergedRow } from './merge-landing'
+import { dropZones } from './drop-zones'
+import { selection, buildDeck } from './selection'
+import { mergeQueue } from './merge-queue'
+import { checksLabel, type MergedPr } from '../src/core/merge'
 import { countLabel } from './pr-labels'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
-import { itemKey, prKey, isClosed, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
+import { itemKey, prKey, isClosed, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, badge, prPill, describeFailure, notice, external, labels } from './dom'
+import { patch, el, button, age, badge, prPill, describeFailure, notice, labels } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
@@ -32,84 +36,59 @@ export function view(
   const actions = itemActions(store, redraw)
   let sleeping: Item[] = []
   const snoozed = button('Snoozed 0', () => actions.showList(sleeping), 'chip')
-  const header = boardHeader(saved, update, snoozed, settings(prefs, save))
+  const gear = settings(prefs, save, () => snapshot?.computers ?? [])
+  const header = boardHeader(saved, update, snoozed, gear)
   const { lanes } = header
-  const confirm = mergeDialog(
+  const confirm = mergeDialog(prefs, save)
+  const notify = mergeToasts(prefs, gear)
+  let landing = false
+  const landed = new Map<string, MergedPr>()
+  async function arrive(row: MergedPr) {
+    const key = prKey(row),
+      col = columns.get('merged')!,
+      node = mergedRow(row)
+    landing = true
+    try {
+      await land(col.list, cards.get(key), node, () => {
+        cards.set('merged:' + key, node)
+        cards.delete(key)
+        signatures.delete(key)
+        landed.set(key, row)
+      })
+    } finally {
+      landing = false
+    }
+    redraw()
+  }
+  const queue = mergeQueue(
     prefs,
-    save,
-    (pr, method, warnings) => void merges.start(pr, method, { warnings, mergeable: pr.mergeable, behind: pr.behind }),
+    confirm,
+    (pr) =>
+      arrive(snapshot?.merged.find((row) => prKey(row) === prKey(pr)) ?? { ...pr, mergedAt: new Date().toISOString() }),
+    notify,
+    redraw,
   )
-  const merges = mergeToasts(redraw, (pr, facts) => confirm(pr, facts))
-  const openMerge = (pr: MappedPr) => {
-    const facts = snapshot?.error || snapshot?.repos[pr.repo]
-    if (!prefs.askBeforeMerging && facts?.ok && canMergeWithoutDialog(pr, facts.value, prefs.mergeMethod))
-      void merges.start(pr, prefs.mergeMethod)
-    else confirm(pr, facts)
+  function start(prs: MappedPr[]) {
+    if (queue.busy) return
+    select.clear()
+    void queue.start(prs).catch(notice)
   }
-  const drawer = drawers(openMerge, actions.selector)
-  let dragging: MappedPr | null = null
-  let draggedItem: Item | null = null
+  const drawer = drawers((pr) => start([pr]), actions.selector)
   const columns = new Map<Lane, ReturnType<typeof makeLane>>()
-  function dragTarget(key: 'merged' | 'closed', on: boolean) {
-    const col = columns.get(key)
-    if (!on) col?.lane.querySelector('.over')?.classList.remove('over')
-    col?.expandForDrag(on)
-    col?.lane.classList.toggle('target', on)
-  }
-  function resetDrag() {
-    dragging = null
-    draggedItem = null
-    dragTarget('closed', false)
-    dragTarget('merged', false)
-  }
+  const zones = dropZones(columns, queue.panel, actions.move, start, (pr) => confirm(pr, undefined, true))
   for (const key of laneKeys) {
     const col = makeLane(key, collapsed, () => orca.storage.set('collapsed', [...collapsed]))
     const { lane, list } = col
     if (key === 'prs') lanes.append(divider())
     lanes.append(lane)
     columns.set(key, col)
-    if (statuses.some((s) => s === key)) {
-      lane.ondragover = (e) => {
-        if (draggedItem) e.preventDefault()
-      }
-      lane.ondrop = (e) => {
-        e.preventDefault()
-        const item = draggedItem
-        resetDrag()
-        if (item) actions.move(item, key as Status)
-      }
-    }
-    if (key === 'closed' || key === 'merged') {
-      const split = el('div', '', 'split')
-      const targets = key === 'closed' ? (['done', 'canceled'] as const) : (['merge', 'close'] as const)
-      for (const target of targets) {
-        const title = target === 'merge' ? 'Merge' : target === 'close' ? 'Close PR' : labels[target]
-        const zone = el('div', title, 'zone')
-        zone.classList.toggle('danger', target === 'canceled' || target === 'close')
-        zone.ondragover = (e) => {
-          if (key === 'closed' ? draggedItem : dragging) {
-            e.preventDefault()
-            zone.classList.add('over')
-          }
-        }
-        zone.ondragleave = () => zone.classList.remove('over')
-        zone.ondrop = (e) => {
-          e.preventDefault()
-          const item = draggedItem,
-            pr = dragging
-          resetDrag()
-          if (item && (target === 'done' || target === 'canceled')) actions.move(item, target)
-          if (pr && target === 'merge') openMerge(pr)
-          if (pr && target === 'close') confirm(pr, undefined, true)
-        }
-        split.append(zone)
-      }
-      lane.append(split)
-    }
+    zones.attach(key, lane)
     for (let n = 0; n < 3; n++) list.append(el('div', '', 'skeleton'))
   }
   const cards = new Map<string, HTMLElement>(),
     signatures = new Map<string, string>()
+  const select = selection(columns.get('prs')!.lane, cards, start)
+  columns.get('merged')!.list.before(queue.panel)
   const group = el('details'),
     summary = el('summary'),
     unmapped = el('div')
@@ -124,6 +103,29 @@ export function view(
   }
   function draw(data: Snapshot) {
     snapshot = data
+    if (
+      landing ||
+      (queue.active &&
+        !landed.has(queue.active) &&
+        data.merged.some((p) => prKey(p) === queue.active) &&
+        cards.has(queue.active))
+    )
+      return
+    const backgroundRow = data.merged.find((row) => cards.has(prKey(row)))
+    if (backgroundRow && !queue.busy) {
+      void arrive(backgroundRow).catch(notice)
+      return
+    }
+    for (const k of landed.keys()) if (data.merged.some((p) => prKey(p) === k)) landed.delete(k)
+    if (landed.size)
+      data = {
+        ...data,
+        prs: data.prs.filter((p) => !landed.has(prKey(p))),
+        merged: [...landed.values(), ...data.merged],
+      }
+    const mergedColumn = columns.get('merged')!
+    mergedColumn.expandForDrag(queue.panel.classList.contains('on') || mergedColumn.lane.classList.contains('target'))
+    select.go.disabled = queue.busy
     actions.reconcile(
       data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
       Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
@@ -153,7 +155,7 @@ export function view(
       }
       const element = node
       const links = isItem ? prs.filter((p) => p.items.some((i) => itemKey(i) === key)) : row.items
-      const merging = !isItem && (merges.running(key) || !!data.running?.includes(key))
+      const merging = !isItem && !!data.running?.includes(key)
       node.inert = merging
       node.classList.toggle('merging', merging)
       const signature = JSON.stringify([
@@ -174,21 +176,26 @@ export function view(
           if (anchor) actions.menu(row, anchor)
         }
         node.ondragstart = (e) => {
-          draggedItem = row
+          zones.item(row)
           e.dataTransfer?.setData('text/plain', key)
-          dragTarget('closed', true)
         }
-        node.ondragend = resetDrag
+        node.ondragend = zones.resetDrag
       } else {
-        node.draggable = true
+        node.draggable = !queue.busy
         node.ondragstart = (e) => {
-          dragging = row
+          if (queue.busy) {
+            e.preventDefault()
+            return
+          }
+          const dragging = select.batch(row)
+          zones.prs(dragging, buildDeck(dragging, cards, e))
           e.dataTransfer?.setData('text/plain', key)
-          dragTarget('merged', true)
         }
-        node.ondragend = resetDrag
+        node.ondragend = zones.resetDrag
       }
-      node.onclick = open
+      node.onclick = (e) => {
+        if (isItem || !select.click(e, key)) open()
+      }
       node.onkeydown = (e) => {
         if (e.target === element && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault()
@@ -207,6 +214,7 @@ export function view(
           el('time', age(row.updated)),
         )
         node.append(meta, el('h3', row.title))
+        if (!isItem) node.append(select.checkbox(key))
         if (!closed) {
           const toggle = button(
             '',
@@ -283,12 +291,6 @@ export function view(
       }
       return node
     }
-    function patch(parent: HTMLElement, children: HTMLElement[]) {
-      for (const [index, node] of children.entries()) {
-        if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] ?? null)
-      }
-      while (parent.children.length > children.length) parent.lastElementChild?.remove()
-    }
     for (const [key, col] of columns) {
       const { list } = col
       const column = board.columns.find((c) => c.status === key)
@@ -330,13 +332,10 @@ export function view(
           alive.add(key)
           let node = cards.get(key)
           if (!node) {
-            node = external('', row.url)
-            node.className = 'merged-card'
-            if (row.notification) node.classList.add('landed')
+            node = mergedRow(row)
             cards.set(key, node)
           }
-          node.replaceChildren(el('small', prKey(row) + ' · ' + age(row.mergedAt)), el('h3', row.title))
-          if (row.notification) node.append(el('small', row.notification))
+          node.querySelector('time')!.textContent = age(row.mergedAt)
           nodes.push(node)
         }
       } else if (column) {
@@ -351,6 +350,7 @@ export function view(
         cards.delete(key)
         signatures.delete(key)
       }
+    select.draw(prs)
     animate(alive)
     if (data.focus) {
       focus()

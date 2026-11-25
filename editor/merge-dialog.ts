@@ -2,6 +2,7 @@ import { assessMerge, type RepositoryFacts, type MergeMethod } from '../src/core
 import { prKey, type PullRequest, type Source } from '../src/core/model'
 import { el, button, describeFailure } from './dom'
 
+const stepLabels = { ready: 'Mark ready', merge: 'Merge' }
 export function mergeDialog() {
   const modal = el('dialog', '', 'merge-dialog')
   modal.setAttribute('aria-label', 'Confirm pull request merge')
@@ -26,7 +27,7 @@ export function mergeDialog() {
     const node = steps.get(e.step)
     if (node) {
       node.dataset.state = e.state
-      node.textContent = (e.step === 'ready' ? 'Mark ready' : 'Merge') + ' · ' + e.state
+      node.textContent = stepLabels[e.step] + ' · ' + e.state
     }
   })
   return (pr: PullRequest, facts?: Source<RepositoryFacts>) => {
@@ -57,6 +58,7 @@ export function mergeDialog() {
       label = el('label', 'Merge method ')
     for (const m of assessment.methods) {
       const opt = el('option', { squash: 'Squash', merge: 'Merge commit', rebase: 'Rebase' }[m])
+      opt.selected = m === assessment.defaultMethod
       opt.value = m
       select.append(opt)
     }
@@ -71,8 +73,8 @@ export function mergeDialog() {
           busy = true
           const progress = el('div', '', 'merge-steps')
           progress.setAttribute('aria-live', 'polite')
-          for (const step of pr.draft ? ['ready', 'merge'] : ['merge']) {
-            const node = el('p', (step === 'ready' ? 'Mark ready' : 'Merge') + ' · waiting')
+          for (const step of pr.draft ? (['ready', 'merge'] as const) : (['merge'] as const)) {
+            const node = el('p', stepLabels[step] + ' · waiting')
             steps.set(step, node)
             progress.append(node)
           }

@@ -1,3 +1,5 @@
+import { prKey } from '../src/core/model'
+import { manualBotNotification } from '../src/core/merge'
 import { items, bots, pullRequest } from '../src/core/normalize'
 import type { Snapshot } from '../src/protocol'
 import type { OrcaFrameApi } from 'orca/frame'
@@ -78,7 +80,6 @@ const data: Snapshot = {
         push: state !== 'no-permission',
         defaultBranch: 'main',
         methods: ['squash', 'merge', 'rebase'],
-        deleteBranchOnMerge: false,
       },
     },
   },
@@ -128,7 +129,7 @@ const fake = {
       }
       if (k === 'pr.merge' && input) {
         const row = data.prs.find((p) => p.repo === input.repo && p.number === input.number)!
-        const key = row.repo + '#' + row.number
+        const key = prKey(row)
         for (const step of row.draft ? ['ready', 'merge'] : ['merge']) {
           handlers.get('merge.progress')?.({ key, step, state: 'running' })
           await new Promise((resolve) => setTimeout(resolve, 900))
@@ -147,7 +148,7 @@ const fake = {
         data.merged.unshift({
           ...row,
           mergedAt: new Date().toISOString(),
-          notification: 'The bot was not told; tell it in Orca',
+          notification: manualBotNotification,
         })
         data.prs = data.prs.filter((p) => p !== row)
         data.total--

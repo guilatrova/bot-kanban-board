@@ -2,7 +2,7 @@ import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot } from '../protocol'
 import { prKey } from '../core/model'
 import { computers } from './sources/orca'
-import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
+import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
 import { github, files, mergePr } from './sources/github'
 import { openBoard } from './board-file'
 import { avatar } from './avatars'
@@ -156,7 +156,7 @@ export function activate(orca: OrcaWorkerApi) {
           title: pr.title,
           url: pr.url,
           mergedAt: new Date().toISOString(),
-          notification: 'The bot was not told; tell it in Orca',
+          notification: manualBotNotification,
         }
         landed.set(key, row)
         data.merged = [row, ...data.merged.filter((p) => prKey(p) !== key)]

@@ -1,4 +1,5 @@
 :root {
+  --dialog-shadow: 0 16px 60px #0005;
   --radius: var(--orca-radius);
   --planned: var(--orca-muted-foreground);
   --needs_you: light-dark(#9e620c, #efb653);
@@ -353,7 +354,7 @@ pre {
   width: min(470px, 90vw);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  box-shadow: 0 16px 60px #0005;
+  box-shadow: var(--dialog-shadow);
 }
 .merge-dialog h2 {
   margin: 8px 0 16px;
@@ -392,8 +393,8 @@ pre {
   color: var(--orca-background);
 }
 .confirm.danger {
-  background: #a8313a;
-  color: white;
+  background: var(--orca-destructive);
+  color: var(--orca-background);
 }
 .merge-steps {
   width: 100%;

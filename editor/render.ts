@@ -1,10 +1,9 @@
 import { buildBoard, toggleBot } from '../src/core/board'
 import { botKey, itemKey, prKey, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, labels, badge, prState, describeFailure } from './dom'
+import { el, button, age, labels, badge, prState, describeFailure, external } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
-import { external } from './dom'
 type Row = Item | MappedPr
 export function view(initial: string[]) {
   let selected = new Set(initial),

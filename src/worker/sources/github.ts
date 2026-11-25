@@ -1,8 +1,7 @@
 import { mergedToday, mergeMethods, type RepositoryFacts } from '../../core/merge'
 import type { MergeInput, Progress } from '../../protocol'
-import type { Source } from '../../core/model'
+import { prKey, type PullRequest, type Source } from '../../core/model'
 import { runCli } from '../cli'
-import type { PullRequest } from '../../core/model'
 import { obj, rows, str, num, pullRequest, fileChange } from '../../core/normalize'
 import { reader, source } from './read'
 export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ number title url isDraft headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}} }}}}`
@@ -40,14 +39,13 @@ export function github(path: string) {
       if (!after) break
     }
     const repos: Record<string, Source<RepositoryFacts>> = {}
-    for (const repo of new Set(prs.map((p) => p.repo)))
+    const loadRepository = async (repo: string) => {
       repos[repo] = await source('gh api repos', () =>
         read(['api', 'repos/' + repo], (v) => {
           const info = obj(v)
           return {
             defaultBranch: str(info, 'default_branch'),
             push: obj(info.permissions).push === true,
-            deleteBranchOnMerge: info.delete_branch_on_merge === true,
             methods: mergeMethods.filter(
               (m) =>
                 info[{ squash: 'allow_squash_merge', merge: 'allow_merge_commit', rebase: 'allow_rebase_merge' }[m]] ===
@@ -56,33 +54,37 @@ export function github(path: string) {
           }
         }),
       )
+    }
     const now = new Date()
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const merged = await source('gh api graphql', () =>
-      read(
-        [
-          'api',
-          'graphql',
-          '-f',
-          'query=query($search:String!){search(query:$search,type:ISSUE,first:40){nodes{... on PullRequest {number title url mergedAt repository{nameWithOwner}}}}}',
-          '-f',
-          'search=is:pr is:merged user:' + login + ' merged:>=' + midnight.toISOString() + ' sort:updated-desc',
-        ],
-        (v) =>
-          mergedToday(
-            rows(obj(obj(obj(v).data).search).nodes)
-              .map(obj)
-              .map((p) => ({
-                repo: str(obj(p.repository), 'nameWithOwner'),
-                number: num(p, 'number'),
-                title: str(p, 'title'),
-                url: str(p, 'url'),
-                mergedAt: str(p, 'mergedAt'),
-              })),
-            now,
-          ),
+    const [merged] = await Promise.all([
+      source('gh api graphql', () =>
+        read(
+          [
+            'api',
+            'graphql',
+            '-f',
+            'query=query($search:String!){search(query:$search,type:ISSUE,first:40){nodes{... on PullRequest {number title url mergedAt repository{nameWithOwner}}}}}',
+            '-f',
+            'search=is:pr is:merged user:' + login + ' merged:>=' + midnight.toISOString() + ' sort:updated-desc',
+          ],
+          (v) =>
+            mergedToday(
+              rows(obj(obj(obj(v).data).search).nodes)
+                .map(obj)
+                .map((p) => ({
+                  repo: str(obj(p.repository), 'nameWithOwner'),
+                  number: num(p, 'number'),
+                  title: str(p, 'title'),
+                  url: str(p, 'url'),
+                  mergedAt: str(p, 'mergedAt'),
+                })),
+              now,
+            ),
+        ),
       ),
-    )
+      ...Array.from(new Set(prs.map((p) => p.repo)), loadRepository),
+    ])
     return { prs, total, repos, merged }
   })
 }
@@ -102,7 +104,7 @@ export async function mergePr(
   progress: (event: Progress) => void,
   onReady: () => void,
 ): Promise<Source<null>> {
-  const key = pr.repo + '#' + pr.number
+  const key = prKey(pr)
   for (const step of (pr.draft ? ['ready', 'merge'] : ['merge']) as ('ready' | 'merge')[]) {
     progress({ key, step, state: 'running' })
     const result =

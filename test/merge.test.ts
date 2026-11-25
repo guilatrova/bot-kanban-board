@@ -14,7 +14,6 @@ const repo: RepositoryFacts = {
   defaultBranch: 'main',
   push: true,
   methods: ['merge', 'squash'],
-  deleteBranchOnMerge: false,
 }
 describe('merge assessment', () => {
   it('offers allowed methods and prefers squash', () => {

@@ -1,12 +1,12 @@
 import type { PullRequest, IssueRef } from './model'
 
+export const manualBotNotification = 'The bot was not told; tell it in Orca'
 export const mergeMethods = ['squash', 'merge', 'rebase'] as const
 export type MergeMethod = (typeof mergeMethods)[number]
 export interface RepositoryFacts {
   defaultBranch: string
   push: boolean
   methods: MergeMethod[]
-  deleteBranchOnMerge: boolean
 }
 export interface Warning {
   text: string

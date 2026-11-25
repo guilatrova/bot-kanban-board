@@ -83,7 +83,7 @@ export function view(initial: string[]) {
       }),
     )
     message.textContent =
-      !board.bots.length && board.computers.every((c) => !c.error)
+      data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error)
         ? 'No bots yet. Open Items will appear here when a bot creates one.'
         : ''
     const alive = new Set<string>()
@@ -194,7 +194,8 @@ export function view(initial: string[]) {
         heading.textContent = labels[column.status] + ' · ' + column.items.length
         nodes = column.items.map(card)
       }
-      patch(list, nodes.length ? nodes : [el('p', 'Nothing here.', 'empty')])
+      const reading = key === 'prs' ? !data.prsAt && !data.error : !data.itemsAt
+      patch(list, nodes.length ? nodes : reading ? [el('div', '', 'skeleton')] : [el('p', 'Nothing here.', 'empty')])
     }
     for (const key of cards.keys())
       if (!alive.has(key)) {

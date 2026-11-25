@@ -1,7 +1,7 @@
 import type { Computer, Item } from '../../core/model'
 import { bots, items, obj, rows, str, workers, workspaces } from '../../core/normalize'
 import { reader, source } from './read'
-export async function computers(path: string): Promise<Computer[]> {
+export async function computers(path: string, onComputer: (computer: Computer) => void): Promise<Computer[]> {
   const read = reader('orca', path)
   const environments = await source('orca environment list', () =>
     read(['environment', 'list', '--json'], (v) =>
@@ -41,7 +41,9 @@ export async function computers(path: string): Promise<Computer[]> {
         )
         return { bots: roster, workspaces: trees, items: byBot.flat() }
       })
-      return { ...target, source: result }
+      const computer = { ...target, source: result }
+      onComputer(computer)
+      return computer
     }),
   )
   if (!environments.ok) results.push({ key: 'discovery', name: 'Paired computers', source: environments })

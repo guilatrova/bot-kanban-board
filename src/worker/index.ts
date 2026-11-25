@@ -11,7 +11,7 @@ export function activate(orca: OrcaWorkerApi) {
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
   const fileCache = new Map<string, string>()
   function publish(panel?: string) {
-    const json = JSON.stringify(data),
+    const json = JSON.stringify({ ...data, focus: Boolean(panel) && data.focus }),
       size = 32000,
       count = Math.ceil(json.length / size)
     for (let i = 0; i < count; i++)
@@ -25,10 +25,15 @@ export function activate(orca: OrcaWorkerApi) {
     prJob: Promise<void> | null = null
   function refreshItems() {
     return (itemJob ??= (async () => {
-      data.computers = await computers(await path('orcaPath'))
+      data.computers = await computers(await path('orcaPath'), (computer) => {
+        const position = data.computers.findIndex((previous) => previous.key === computer.key)
+        if (position < 0) data.computers.push(computer)
+        else data.computers[position] = computer
+        data.itemsAt = Date.now()
+        publish()
+      })
       data.itemsAt = Date.now()
       publish()
-      data.focus = false
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
         .filter((i) => i.status === 'needs_you').length

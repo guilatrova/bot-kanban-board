@@ -346,7 +346,10 @@ export function view(
         signatures.delete(key)
       }
     animate(alive)
-    if (data.focus) focus()
+    if (data.focus) {
+      focus()
+      data.focus = false
+    }
   }
   return { draw, focus }
 }

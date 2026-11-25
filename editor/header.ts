@@ -46,17 +46,9 @@ export function boardHeader(
   updated.setAttribute('aria-label', 'Refresh board')
   const brand = el('h1', 'Bot Kanban Board', 'brand')
   brand.prepend(icon('M2 2h3.6v12H2zM6.7 2h3.6v8H6.7zM11.4 2H15v5h-3.6z', 16))
-  header.append(
-    brand,
-    demo,
-    el('span', '', 'sep'),
-    filters,
-    unreachable,
-    el('span', '', 'spacer'),
-    updated,
-    filter,
-    settings(saved, update),
-  )
+  const tools = el('div', '', 'header-tools')
+  tools.append(updated, filter, settings(saved, update))
+  header.append(brand, demo, el('span', '', 'sep'), filters, unreachable, tools)
   document.body.append(header, message, lanes)
 
   return {

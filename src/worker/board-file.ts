@@ -18,9 +18,10 @@ export async function openBoard(orca: OrcaWorkerApi, path: string | null) {
     if (!(e && typeof e === 'object' && 'code' in e && e.code === 'EEXIST')) throw e
   }
   const projects = await orca.host.call('project.list')
-  let id = projects.projects.find(
+  const project = projects.projects.find(
     (p) => p.kind === 'folder' && (!p.hostId || p.hostId === 'local') && p.path === folder,
-  )?.id
+  )
+  let id = project?.id
   if (!id) {
     if (path === null)
       throw Error(
@@ -31,7 +32,7 @@ export async function openBoard(orca: OrcaWorkerApi, path: string | null) {
       str(obj(obj(v).repo), 'id'),
     )
   }
-  await orca.host.call('project.setHidden', { projectId: id, hidden: true })
+  if (!project?.hidden) await orca.host.call('project.setHidden', { projectId: id, hidden: true })
   const trees = await orca.host.call('workspace.list')
   const workspace = trees.workspaces.find((w) => w.projectId === id && w.kind === 'folder')
   if (!workspace) throw Error('Board folder unavailable. Reopen the board from the command palette.')

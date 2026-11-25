@@ -30,6 +30,16 @@ export default async function activate(orca: OrcaWorkerApi) {
         focus: false,
       }
   const landed = new Map<string, MergedPr>()
+  function recordMerged(row: MergedPr) {
+    const key = prKey(row)
+    if (data.prs.some((p) => prKey(p) === key)) data.total = Math.max(0, data.total - 1)
+    data.prs = data.prs.filter((p) => prKey(p) !== key)
+    if (mergedToday([row]).length) {
+      landed.set(key, row)
+      data.merged = mergedToday([row, ...data.merged.filter((p) => prKey(p) !== key)])
+    }
+    publish()
+  }
   const closingPrs = new Set<string>()
   const busy = (key: string) => closingPrs.has(key) || data.running?.includes(key)
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
@@ -133,7 +143,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   orca.panels.handle('pr.read', async (input) => {
     const live = demo ? undefined : await readPull(await path('ghPath'), input)
     if (live?.merged || (demo && data.merged.some((p) => prKey(p) === prKey(input)))) {
-      if (!demo) await refreshPrs()
+      if (live?.merged) recordMerged(live.row)
       return { merged: true as const }
     }
     if (!demo) await refreshPrs()
@@ -240,11 +250,7 @@ export default async function activate(orca: OrcaWorkerApi) {
           mergedAt: new Date().toISOString(),
           notification: manualBotNotification,
         }
-        landed.set(key, row)
-        data.merged = [row, ...data.merged.filter((p) => prKey(p) !== key)]
-        data.prs = data.prs.filter((p) => prKey(p) !== key)
-        data.total = Math.max(0, data.total - 1)
-        publish()
+        recordMerged(row)
       }
       return result
     } finally {

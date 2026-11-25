@@ -162,7 +162,7 @@ export function readPull(path: string, input: { repo: string; number: number }) 
       'api',
       'graphql',
       '-f',
-      'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){state ' +
+      'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){state mergedAt ' +
         pullFields +
         '}}}',
       '-f',
@@ -174,7 +174,11 @@ export function readPull(path: string, input: { repo: string; number: number }) 
     ],
     (value) => {
       const pr = obj(obj(obj(obj(value).data).repository).pullRequest)
-      if (pr.state === 'MERGED') return { merged: true as const }
+      if (pr.state === 'MERGED')
+        return {
+          merged: true as const,
+          row: { ...input, title: str(pr, 'title'), url: str(pr, 'url'), mergedAt: str(pr, 'mergedAt') },
+        }
       if (pr.state !== 'OPEN') throw Error('Pull request is no longer open.')
       return { merged: false as const, pr: pullRequest(pr) }
     },

@@ -716,8 +716,11 @@ header .chips {
   height: 16px;
   background: var(--line);
 }
-.spacer {
-  flex: 1;
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
 }
 .brand {
   display: flex;

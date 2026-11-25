@@ -220,17 +220,22 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
         const by = isItem ? row : (row.items[0] ?? row.workspaces[0])
         const meta = el('div', '', 'meta')
         if (by) meta.append(badge(by.computer, by.bot))
-        meta.append(el('small', by?.bot ?? 'No bot'), el('time', age(row.updated)))
-        node.append(meta, el('small', isItem ? 'Item #' + row.number : prKey(row)), el('h3', row.title))
+        meta.append(
+          el('small', by?.bot ?? 'No bot'),
+          el('small', isItem ? 'Item #' + row.number : prKey(row), 'ref'),
+          el('time', age(row.updated)),
+        )
+        node.append(meta, el('h3', row.title))
         if (isItem) {
           const more = button(
-            'More',
+            '•••',
             (e) => {
               e.stopPropagation()
               actions.menu(row)
             },
             'more',
           )
+          more.setAttribute('aria-label', 'More')
           meta.append(more)
           const pending = actions.pending(row)
           if (pending) node.append(el('mark', pending))
@@ -240,7 +245,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
               : row.status === 'waiting'
                 ? row.wait
                 : row.workers.findLast((w) => w.subject)?.subject
-          if (sub) node.append(el('p', sub))
+          if (sub) node.append(el('p', sub, 'quote'))
           const active = row.workers.find((w) => w.state === 'working')
           if (active) node.append(el('mark', '● ' + active.title))
           if (row.chat) node.append(el('small', row.chat))
@@ -285,7 +290,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       lane.hidden = key === 'planned' && !column
       let nodes: HTMLElement[] = []
       if (key === 'prs') {
-        heading.textContent = labels.prs + ' · ' + prs.length
+        heading.replaceChildren(labels.prs, el('span', String(prs.length)))
         if (data.error) {
           prError.textContent = [describeFailure(data.error), data.prsAt ? 'Last read ' + age(data.prsAt) : '']
             .filter(Boolean)
@@ -309,7 +314,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           }
         }
       } else if (key === 'merged') {
-        heading.textContent = 'Merged · ' + board.merged.length
+        heading.replaceChildren('Merged', el('span', 'today ' + board.merged.length))
         const error = data.error || data.mergedError
         if (error) nodes.push(el('p', describeFailure(error)))
         for (const row of board.merged) {
@@ -327,7 +332,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           nodes.push(node)
         }
       } else if (column) {
-        heading.textContent = labels[column.status] + ' · ' + column.items.length
+        heading.replaceChildren(labels[column.status], el('span', String(column.items.length)))
         nodes = column.items.map(card)
       }
       const reading = key === 'prs' || key === 'merged' ? !data.prsAt && !data.error : !data.itemsAt

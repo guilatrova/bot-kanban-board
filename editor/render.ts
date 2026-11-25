@@ -48,14 +48,17 @@ export function view(
       col = columns.get('merged')!,
       node = mergedRow(row)
     landing = true
-    await land(col.list, cards.get(key), node, () => {
+    try {
+      await land(col.list, cards.get(key), node, () => {
+        cards.set('merged:' + key, node)
+        cards.delete(key)
+        signatures.delete(key)
+        landed.set(key, row)
+      })
+    } finally {
       landing = false
-      cards.set('merged:' + key, node)
-      cards.delete(key)
-      signatures.delete(key)
-      landed.set(key, row)
-      redraw()
-    })
+    }
+    redraw()
   }
   const queue = mergeQueue(
     prefs,

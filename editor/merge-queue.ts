@@ -66,8 +66,8 @@ export function mergeQueue(
     }
     state('', 'queued', '')
     let approved: { method: MergeMethod; sha: string; facts: ConfirmedMerge } | undefined
-    async function attempt(): Promise<'merged' | 'removed' | 'failed'> {
-      const ref = { repo: pr.repo, number: pr.number }
+    async function attempt(manual: boolean): Promise<'merged' | 'removed' | 'failed'> {
+      const ref = { repo: pr.repo, number: pr.number, prOnly: !manual }
       const current = await orca.plugin.request('pr.read', ref, { timeoutMs: 120000 })
       if (current.merged || current.closed) return 'removed'
       const fresh = { ...pr, ...current.pr, behind: current.pr.behind }
@@ -101,7 +101,7 @@ export function mergeQueue(
       })
       const result = await orca.plugin.request(
         'pr.merge',
-        { repo: pr.repo, number: pr.number, method, sha: fresh.sha ?? '', updated: fresh.updated },
+        { ...ref, method, sha: fresh.sha ?? '', updated: fresh.updated },
         { timeoutMs: 120000 },
       )
       // Preflight rejections return directly; accepted requests post the final step before replying.
@@ -122,7 +122,7 @@ export function mergeQueue(
           viewport = body.getBoundingClientRect()
         if (bounds.top < viewport.top) body.scrollTop += bounds.top - viewport.top
         else if (bounds.bottom > viewport.bottom) body.scrollTop += bounds.bottom - viewport.bottom
-        const result = await attempt().catch(() => 'failed' as const)
+        const result = await attempt(manual).catch(() => 'failed' as const)
         if (result !== 'failed') {
           failed.delete(key)
           if (result === 'merged') {

@@ -6,6 +6,7 @@ export interface BotMessage {
   body: string
 }
 export interface MergeInput {
+  prOnly?: boolean
   repo: string
   number: number
   updated: string
@@ -42,7 +43,7 @@ declare module 'orca' {
     'bot.tell': { input: BotMessage; output: boolean }
     'board.get': { input: { index: number; fresh?: boolean }; output: Chunk }
     'pr.read': {
-      input: { repo: string; number: number }
+      input: { repo: string; number: number; prOnly?: boolean }
       output:
         | { merged: false; closed: true }
         | { merged: true; closed?: false }

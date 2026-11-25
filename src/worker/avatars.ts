@@ -1,10 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { StorageApi } from 'orca'
 import type { Computer } from '../core/model'
-import { obj, rows, str } from '../core/normalize'
-import { runCli } from './cli'
+import { withTerminal } from './terminal'
 
 const freshness = 6 * 60 * 60_000
 const chunkSize = 72 * 1024
@@ -53,33 +52,12 @@ const transfer =
   "'"
 
 async function remoteImage(path: string, computer: string, home: string, previous: string | null) {
-  async function terminal(args: string[]) {
-    const r = await runCli('orca', ['terminal', ...args, '--environment', computer, '--json'], path)
-    if (!r.ok) throw Error(r.message)
-    return obj(r.value)
-  }
-  const title = 'Board avatar ' + randomUUID()
-  const workspace = ['--worktree', 'path:' + home]
-  let handle: string[] = []
-  async function until(marker: RegExp) {
-    const deadline = Date.now() + 10_000
-    do {
-      const r = await terminal(['read', ...handle, '--limit', '2000'])
-      const lines = rows(obj(r.terminal).tail).filter((v): v is string => typeof v === 'string')
-      const index = lines.findIndex((line) => marker.test(line))
-      if (index >= 0) return lines.slice(0, index + 1)
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    } while (Date.now() < deadline)
-    throw Error('Avatar transfer timed out')
-  }
-  try {
-    const created = await terminal(['create', ...workspace, '--title', title, '--command', transfer])
-    handle = ['--terminal', str(obj(created.terminal), 'handle')]
+  return withTerminal(path, computer, home, 'Board avatar', transfer, async ({ send, until }) => {
     const hash = (await until(/^BOARDHASH=[a-f0-9]{64}$/)).at(-1)!.slice(10)
     if (hash === previous) return { hash, bytes: null }
     const blocks: Buffer[] = []
     for (let i = 0; ; i++) {
-      await terminal(['send', ...handle, '--text', String(i), '--enter'])
+      await send(String(i))
       const lines = await until(new RegExp('^BOARDDONE=' + i + '$'))
       const start = lines.indexOf('BOARDSTART=' + i)
       if (start < 0) throw Error('Incomplete avatar block')
@@ -90,16 +68,7 @@ async function remoteImage(path: string, computer: string, home: string, previou
     const bytes = Buffer.concat(blocks)
     if (digest(bytes) !== hash) throw Error('Avatar changed during transfer')
     return { hash, bytes }
-  } finally {
-    if (!handle.length) {
-      const list = await terminal(['list', ...workspace, '--limit', '1000'])
-      const owned = rows(list.terminals)
-        .map(obj)
-        .find((t) => t.title === title && typeof t.handle === 'string')
-      if (owned) handle = ['--terminal', str(owned, 'handle')]
-    }
-    if (handle.length) await terminal(['close', ...handle])
-  }
+  })
 }
 
 export function avatars(storage: StorageApi) {

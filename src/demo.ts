@@ -146,6 +146,51 @@ export function demoBoard(state: string | null = null) {
         draft: false,
       })
     }
+    const titles = [
+      'Document the field survey collection schedule and include calibration notes for every sensor used in the spring sampling',
+      'Preserve literal <details> in field notes',
+      'Add the orchard sampling schedule',
+      'Display water levels by plot',
+      'Validate the station readings',
+      'Summarize daily measurements',
+      'Track rainfall across the north field',
+      'Sort field stations by distance',
+    ]
+    for (let i = 0; i < (state === 'queue50' ? 50 : titles.length); i++) {
+      const number = 10 + i,
+        head = 'station-' + number
+      const title = titles[i] ?? 'Update readings for plot ' + (i + 1)
+      data.prs.push({
+        ...pr,
+        number,
+        title,
+        head,
+        url: pr.url.replace(/1$/, String(number)),
+        draft: false,
+        checks: 'SUCCESS',
+        base: 'main',
+        mergeable: 'MERGEABLE',
+      })
+      const roster = data.computers[0]!.source
+      if (roster.ok)
+        roster.value.workspaces.push({
+          computer: 'local',
+          id: head,
+          name: head,
+          bot: list[i % list.length]!.name,
+          repo: pr.repo,
+          branch: head,
+          home: null,
+        })
+    }
+    for (let i = 0; i < 42; i++)
+      data.merged.push({
+        ...pr,
+        number: 100 + i,
+        title: 'Record observations for plot ' + (i + 1),
+        url: pr.url.replace(/1$/, String(100 + i)),
+        mergedAt: new Date().toISOString(),
+      })
     data.total = data.prs.length
     data.merged.push({
       ...pr,

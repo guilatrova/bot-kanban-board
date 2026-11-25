@@ -1,11 +1,13 @@
 import type { PullRequest, IssueRef } from './model'
 
-export const manualBotNotification = 'The bot was not told; tell it in Orca'
 export const mergeMethods = ['squash', 'merge', 'rebase'] as const
 export type MergeMethod = (typeof mergeMethods)[number]
 export const methodLabels = { squash: 'Squash', merge: 'Merge commit', rebase: 'Rebase' }
 export type MergePreferences = {
   mergeMethod: MergeMethod
+  botName: string
+  computer: string
+  tellBot: boolean
   askBeforeMerging: boolean
 }
 export function checksLabel(checks: string | null) {
@@ -72,7 +74,6 @@ export interface MergedPr extends IssueRef {
   title: string
   url: string
   mergedAt: string
-  notification?: string
 }
 export function localDate(date: Date) {
   return [

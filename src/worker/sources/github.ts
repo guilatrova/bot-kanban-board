@@ -179,6 +179,7 @@ export function readPull(path: string, input: { repo: string; number: number }) 
           merged: true as const,
           row: { ...input, title: str(pr, 'title'), url: str(pr, 'url'), mergedAt: str(pr, 'mergedAt') },
         }
+      if (pr.state === 'CLOSED') return { closed: true as const, merged: false as const }
       if (pr.state !== 'OPEN') throw Error('Pull request is no longer open.')
       return { merged: false as const, pr: pullRequest(pr) }
     },

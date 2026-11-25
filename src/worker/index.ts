@@ -4,6 +4,8 @@ import { prKey } from '../core/model'
 import { computers } from './sources/orca'
 import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
 import { github, files, mergePr, closePr } from './sources/github'
+import { stackOrder } from '../core/stacks'
+import { readPull } from './sources/github'
 import { openBoard } from './board-file'
 import { avatars } from './avatars'
 import { notifications } from './bells'
@@ -32,16 +34,13 @@ export default async function activate(orca: OrcaWorkerApi) {
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
   const avatar = avatars(orca.storage)
   const fileCache = new Map<string, string>()
-  function publish(panel?: string) {
-    const json = JSON.stringify({ ...data, focus: Boolean(panel) && data.focus }),
-      size = 32000,
-      count = Math.ceil(json.length / size)
-    for (let i = 0; i < count; i++)
-      orca.panels.post(
-        'board.changed',
-        { index: i, count, data: json.slice(i * size, (i + 1) * size) },
-        panel ? { panel } : undefined,
-      )
+  let postTimer: ReturnType<typeof setTimeout> | undefined
+  function publish() {
+    if (postTimer) return
+    postTimer = setTimeout(() => {
+      postTimer = undefined
+      orca.panels.post('board.changed', null)
+    }, 250)
   }
   const evaluateBells = await notifications(orca, data, publish)
   let itemJob: Promise<void> | null = null,
@@ -116,11 +115,32 @@ export default async function activate(orca: OrcaWorkerApi) {
     }))
   }
   const refresh = () => Promise.all([refreshItems(), refreshPrs()])
-  orca.panels.handle('board.get', async (_, context) => {
-    if (!demo && (itemJob || !data.itemsAt)) await refreshItems()
-    publish(context.panel.id)
-    data.focus = false
-    return null
+  const snapshots = new Map<string, string>()
+  orca.panels.handle('board.get', async ({ index, fresh }, context) => {
+    const id = context.panel.id
+    if (index === 0) {
+      if (fresh && !demo) await refresh()
+      snapshots.set(id, JSON.stringify(data))
+      data.focus = false
+    }
+    const json = snapshots.get(id)
+    if (!json) throw Error('Snapshot expired. Refresh the board.')
+    const count = Math.ceil(json.length / 32000)
+    if (index + 1 >= count) snapshots.delete(id)
+    return { index, count, data: json.slice(index * 32000, (index + 1) * 32000) }
+  })
+  orca.panels.handle('pr.read', async (input) => {
+    const live = demo ? undefined : await readPull(await path('ghPath'), input)
+    if (live?.merged || (demo && data.merged.some((p) => prKey(p) === prKey(input)))) {
+      if (!demo) await refreshPrs()
+      return { merged: true as const }
+    }
+    if (!demo) await refreshPrs()
+    const pr = live?.pr ?? data.prs.find((p) => prKey(p) === prKey(input))
+    const facts = data.error || data.repos[input.repo]
+    if (!pr || !facts) throw Error('Pull request unavailable.')
+    const ordered = stackOrder([pr, ...data.prs.filter((p) => prKey(p) !== prKey(input))])
+    return { merged: false as const, pr: ordered.find((p) => prKey(p) === prKey(input))!, facts }
   })
   orca.panels.handle('board.refresh', async () => {
     if (demo) publish()
@@ -207,6 +227,8 @@ export default async function activate(orca: OrcaWorkerApi) {
         next: 'Refresh and check the repository settings.',
       }
     merging.add(key)
+    data.running = [...(data.running ?? []), key]
+    publish()
     try {
       const result = await mergePr(
         await path('ghPath'),
@@ -235,6 +257,8 @@ export default async function activate(orca: OrcaWorkerApi) {
       }
       return result
     } finally {
+      data.running = data.running?.filter((k) => k !== key)
+      publish()
       merging.delete(key)
       void (async () => {
         await prJob
@@ -263,11 +287,22 @@ export default async function activate(orca: OrcaWorkerApi) {
     const end = input.offset + 32000
     return { ok: true as const, value: { data: json.slice(input.offset, end), end: end >= json.length } }
   })
-  for (const focus of [false, true])
-    orca.commands.register(focus ? 'bot-kanban-board.needs-you' : 'bot-kanban-board.open', async () => {
-      data.focus = focus
-      await openBoard(orca, demo ? null : await path('orcaPath'))
-      if (focus) orca.panels.post('board.focus', null)
+  for (const id of ['bot-kanban-board.needs-you', 'bot-kanban-board.open'])
+    orca.commands.register(id, async () => {
+      data.focus = true
+      try {
+        await openBoard(orca, demo ? null : await path('orcaPath'))
+        orca.panels.post('board.focus', null)
+      } catch (error) {
+        const body = String(error) + ' · Reopen Bot Kanban Board from the command palette.'
+        await orca.host.call('statusBar.update', {
+          id: 'needs-you',
+          text: 'Board unavailable',
+          tooltip: body,
+          tone: 'danger',
+        })
+        await orca.host.call('notifications.show', { title: 'Could not open Bot Kanban Board', body })
+      }
     })
   if (demo) return
   let debounce: ReturnType<typeof setTimeout> | undefined

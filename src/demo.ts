@@ -73,8 +73,9 @@ export function demoBoard(state: string | null = null) {
     commits: { nodes: [] },
   })
   pr.title = 'Add collection markers to the field map'
+  pr.checks = 'SUCCESS'
   pr.sha = 'a'.repeat(40)
-  if (['warnings', 'danger', 'failure', 'progress'].includes(state || '')) {
+  if (['warnings', 'danger', 'progress'].includes(state || '')) {
     pr.draft = true
     pr.checks = null
     pr.base = 'spring-survey'
@@ -123,6 +124,35 @@ export function demoBoard(state: string | null = null) {
     itemsAt: Date.now(),
     error: null,
     focus: false,
+  }
+  if (state !== 'empty') {
+    for (const [number, title] of [
+      'Record the summer survey',
+      'Import historical readings',
+      'Resolve survey boundaries',
+    ].entries()) {
+      const n = number + 3
+      data.prs.push({
+        ...pr,
+        number: n,
+        title,
+        head: 'survey-' + n,
+        base: 'main',
+        url: pr.url.replace(/1$/, String(n)),
+        checks: n === 4 ? null : 'SUCCESS',
+        additions: n === 4 ? 5012 : 5,
+        mergeable: n === 5 ? 'CONFLICTING' : 'MERGEABLE',
+        draft: false,
+      })
+    }
+    data.total = data.prs.length
+    data.merged.push({
+      ...pr,
+      number: 6,
+      title: 'Publish spring observations',
+      url: pr.url.replace(/1$/, '6'),
+      mergedAt: new Date().toISOString(),
+    })
   }
   if (state === 'paired' || state === 'bot-warning') {
     const station = data.computers[0]!

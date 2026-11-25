@@ -1,3 +1,5 @@
+import { mergeToasts } from './merge-toasts'
+import { cleanMerge } from '../src/core/merge'
 import { checksLabel, countLabel } from './pr-labels'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
@@ -30,8 +32,14 @@ export function view(
   const snoozed = button('Snoozed 0', () => actions.showList(sleeping), 'chip')
   const header = boardHeader(saved, update, snoozed)
   const { lanes } = header
-  const confirm = mergeDialog()
-  const openMerge = (pr: MappedPr) => confirm(pr, snapshot?.error || snapshot?.repos[pr.repo])
+  const confirm = mergeDialog(saved, update, (pr, method) => void merges.start(pr, method))
+  const merges = mergeToasts(saved, redraw, (pr, facts) => confirm(pr, facts))
+  const openMerge = (pr: MappedPr) => {
+    const facts = snapshot?.error || snapshot?.repos[pr.repo]
+    if (!saved.askBeforeMerging && facts?.ok && cleanMerge(pr, facts.value, saved.mergeMethod))
+      void merges.start(pr, saved.mergeMethod)
+    else confirm(pr, facts)
+  }
   const drawer = drawers(openMerge, actions.selector)
   let dragging: MappedPr | null = null
   let draggedItem: Item | null = null
@@ -139,8 +147,12 @@ export function view(
       }
       const element = node
       const links = isItem ? prs.filter((p) => p.items.some((i) => itemKey(i) === key)) : row.items
+      const merging = !isItem && (merges.running(key) || !!data.running?.includes(key))
+      node.inert = merging
+      node.classList.toggle('merging', merging)
       const signature = JSON.stringify([
         row,
+        merging,
         ringing,
         data.notificationsOff,
         links.map((l) => ('status' in l ? itemKey(l) : prKey(l))),
@@ -237,7 +249,7 @@ export function view(
           if (row.chat) node.append(el('small', row.chat))
         } else
           node.append(
-            prPill(row),
+            merging ? el('mark', 'Merging…', 'ready') : prPill(row),
             el(
               'small',
               ['+' + row.additions + ' −' + row.deletions, countLabel(row.files, 'file'), checksLabel(row.checks)]

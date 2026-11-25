@@ -1,15 +1,25 @@
-import { assessMerge, type RepositoryFacts, type MergeMethod } from '../src/core/merge'
+import { checksLabel, mergeableLabel } from './pr-labels'
+import {
+  methodLabels,
+  type MergePreferences,
+  assessMerge,
+  type RepositoryFacts,
+  type MergeMethod,
+} from '../src/core/merge'
 import { prKey, type MappedPr, type Source } from '../src/core/model'
 import { el, button, describeFailure, notice } from './dom'
 
-const stepLabels = { ready: 'Mark ready', merge: 'Merge' }
-export function mergeDialog() {
+export function mergeDialog(
+  saved: MergePreferences,
+  update: () => void,
+  start: (pr: MappedPr, method: MergeMethod) => void,
+) {
   const modal = el('dialog', '', 'merge-dialog')
   modal.setAttribute('aria-label', 'Confirm pull request merge')
   document.body.append(modal)
   let active = '',
     busy = false
-  const steps = new Map<string, HTMLElement>()
+
   modal.oncancel = (e) => {
     if (busy) e.preventDefault()
   }
@@ -22,18 +32,10 @@ export function mergeDialog() {
     )
       modal.close()
   }
-  orca.plugin.on('merge.progress', (e) => {
-    if (e.key !== active || !busy) return
-    const node = steps.get(e.step)
-    if (node) {
-      node.dataset.state = e.state
-      node.textContent = stepLabels[e.step] + ' · ' + e.state
-    }
-  })
   return (pr: MappedPr, facts?: Source<RepositoryFacts>, closing = false) => {
     if (modal.open) return
     active = prKey(pr)
-    steps.clear()
+
     const actions = el('footer'),
       cancel = button('Cancel', () => modal.close()),
       summary = el('div', '', 'merge-facts')
@@ -74,62 +76,54 @@ export function mergeDialog() {
     const assessment = assessMerge(pr, facts.value)
     summary.append(
       el('p', pr.head + ' → ' + pr.base),
-      el('p', [pr.mergeable, pr.checks || 'No checks', '+' + pr.additions + ' −' + pr.deletions].join(' · ')),
+      el(
+        'p',
+        [mergeableLabel(pr.mergeable), checksLabel(pr.checks), '+' + pr.additions + ' −' + pr.deletions].join(' · '),
+      ),
     )
-    for (const w of assessment.warnings) summary.append(el('p', w.text, w.danger ? 'warning danger' : 'warning'))
+    for (const w of assessment.warnings)
+      summary.append(
+        el(
+          'p',
+          w.checks ? checksLabel(w.checks) + '. Review the checks on GitHub.' : w.text,
+          w.danger ? 'warning danger' : 'warning',
+        ),
+      )
     for (const blocker of assessment.blockers) summary.append(el('p', blocker, 'warning'))
     if (!assessment.canMerge) return
     const select = el('select'),
       label = el('label', 'Merge method ')
     for (const m of assessment.methods) {
-      const opt = el('option', { squash: 'Squash', merge: 'Merge commit', rebase: 'Rebase' }[m])
-      opt.selected = m === assessment.defaultMethod
+      const opt = el('option', methodLabels[m])
+      opt.selected = m === saved.mergeMethod
       opt.value = m
       select.append(opt)
     }
     label.append(select)
     summary.append(label)
-    const sha = pr.sha
+    if (!assessment.methods.includes(saved.mergeMethod))
+      summary.append(
+        el(
+          'p',
+          'This repository does not allow ' + methodLabels[saved.mergeMethod] + '. Choose another method.',
+          'warning',
+        ),
+      )
+    const skip = el('label', '', 'skip'),
+      checkbox = el('input')
+    checkbox.type = 'checkbox'
+    skip.append(checkbox, "Don't ask again for clean pull requests")
+    summary.append(skip)
     actions.append(
       button(
         'Confirm merge',
-        async () => {
-          if (busy) return
-          busy = true
-          const progress = el('div', '', 'merge-steps')
-          progress.setAttribute('aria-live', 'polite')
-          for (const step of pr.draft ? (['ready', 'merge'] as const) : (['merge'] as const)) {
-            const node = el('p', stepLabels[step] + ' · waiting')
-            steps.set(step, node)
-            progress.append(node)
+        () => {
+          modal.close()
+          if (checkbox.checked) {
+            saved.askBeforeMerging = false
+            update()
           }
-          actions.replaceChildren(progress)
-          select.disabled = true
-          try {
-            const result = await orca.plugin.request(
-              'pr.merge',
-              { repo: pr.repo, number: pr.number, updated: pr.updated, sha, method: select.value as MergeMethod },
-              { timeoutMs: 120000 },
-            )
-            if (result.ok) {
-              modal.close()
-              return
-            }
-            if (steps.get('ready')?.dataset.state === 'done')
-              progress.append(el('strong', 'Marked ready, merge failed.'))
-            progress.append(el('p', describeFailure(result)))
-          } catch (e) {
-            progress.append(
-              el(
-                'p',
-                'Connection lost. The last reported steps are shown above. Check the pull request on GitHub before retrying. ' +
-                  String(e),
-              ),
-            )
-          } finally {
-            busy = false
-          }
-          actions.append(button('Close', () => modal.close()))
+          start(pr, select.value as MergeMethod)
         },
         assessment.warnings.some((w) => w.danger) ? 'confirm danger' : 'confirm',
       ),

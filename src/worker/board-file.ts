@@ -35,5 +35,6 @@ export async function openBoard(orca: OrcaWorkerApi, path: string | null) {
   const trees = await orca.host.call('workspace.list')
   const workspace = trees.workspaces.find((w) => w.projectId === id && w.kind === 'folder')
   if (!workspace) throw Error('Board folder unavailable. Reopen the board from the command palette.')
+  await orca.host.call('workspace.open', { workspaceId: workspace.id })
   await orca.host.call('editor.open', { workspaceId: workspace.id, path: file })
 }

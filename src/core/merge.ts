@@ -4,7 +4,7 @@ export const manualBotNotification = 'The bot was not told; tell it in Orca'
 export const mergeMethods = ['squash', 'merge', 'rebase'] as const
 export type MergeMethod = (typeof mergeMethods)[number]
 export const methodLabels = { squash: 'Squash', merge: 'Merge commit', rebase: 'Rebase' }
-export interface MergePreferences {
+export type MergePreferences = {
   mergeMethod: MergeMethod
   askBeforeMerging: boolean
 }

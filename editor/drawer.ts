@@ -1,4 +1,5 @@
 import { el, button, age, labels, notice, prPill, external, badge } from './dom'
+import { countLabel } from './pr-labels'
 import { showFiles } from './diff'
 import { isClosed, itemKey, prKey, type Item, type MappedPr, type Workspace } from '../src/core/model'
 export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: Item) => HTMLElement) {
@@ -76,7 +77,7 @@ export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: It
       el('small', prKey(p) + ' · ' + age(p.updated)),
       el('h2', p.title),
       prPill(p),
-      el('p', '+' + p.additions + ' −' + p.deletions + ' · ' + p.files + ' files', 'diff-counts'),
+      el('p', '+' + p.additions + ' −' + p.deletions + ' · ' + countLabel(p.files, 'file'), 'diff-counts'),
       button(
         'Merge',
         () => {

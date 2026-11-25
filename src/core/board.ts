@@ -53,12 +53,12 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
     (p) =>
       acceptsRepo(p.repo) &&
       (!view.needsMeOnly || !p.draft) &&
-      (p.how === null ? !selected.size : [...p.items, ...p.workspaces].some((m) => visible(m.computer, m.bot))),
+      (p.how === null || [...p.items, ...p.workspaces].some((m) => visible(m.computer, m.bot))),
   )
   return {
     columns,
     selected,
-    merged: merged.filter((pr) => !view.needsMeOnly && !selected.size && acceptsRepo(pr.repo)),
+    merged: merged.filter((pr) => !view.needsMeOnly && acceptsRepo(pr.repo)),
     bots: bots.map((b) => ({
       ...b,
       count: items.filter((i) => !isClosed(i.status) && i.bot === b.name && i.computer === b.computer).length,

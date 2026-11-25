@@ -1,3 +1,4 @@
+import { checksLabel, countLabel } from './pr-labels'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
@@ -239,7 +240,7 @@ export function view(
             prPill(row),
             el(
               'small',
-              ['+' + row.additions + ' −' + row.deletions, row.files + ' files', row.checks]
+              ['+' + row.additions + ' −' + row.deletions, countLabel(row.files, 'file'), checksLabel(row.checks)]
                 .filter(Boolean)
                 .join(' · '),
             ),

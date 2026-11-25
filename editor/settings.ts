@@ -155,18 +155,24 @@ export function settings(saved: MergePreferences, update: () => void, computers:
             option.append(badge(choice.computer, choice.name), choice.label, el('span', '✓', 'ck'))
             list.node.append(option)
           }
-          const r = picker.getBoundingClientRect(),
-            below = innerHeight - r.bottom,
-            above = r.top,
-            up = above > below
-          list.node.style.maxHeight = Math.max(0, (up ? above : below) - 16) + 'px'
-          list.node.style.left =
-            Math.max(8, Math.min(r.right - list.node.offsetWidth, innerWidth - list.node.offsetWidth - 8)) + 'px'
-          list.node.style.top = (up ? r.top - list.node.offsetHeight - 4 : r.bottom + 4) + 'px'
-          list.node.querySelector<HTMLElement>('[aria-selected=true],button')?.focus()
+          positionPicker()
+          ;(list.node.querySelector<HTMLElement>('[aria-selected=true]') ?? list.node.querySelector('button'))?.focus({
+            preventScroll: true,
+          })
         },
         'bpb',
       )
+      function positionPicker() {
+        if (!list?.node.isConnected) return
+        const r = picker.getBoundingClientRect(),
+          below = innerHeight - r.bottom,
+          above = r.top,
+          up = above > below
+        list.node.style.maxHeight = Math.max(0, (up ? above : below) - 16) + 'px'
+        list.node.style.left =
+          Math.max(8, Math.min(r.right - list.node.offsetWidth, innerWidth - list.node.offsetWidth - 8)) + 'px'
+        list.node.style.top = (up ? r.top - list.node.offsetHeight - 4 : r.bottom + 4) + 'px'
+      }
       picker.setAttribute('aria-haspopup', 'listbox')
       function paint() {
         const choice = choices.find((c) => c.key === botKey(saved.computer, saved.botName))
@@ -176,7 +182,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
       show()
       wrap.append(row('Which bot', '', picker))
       reveal.append(wrap)
-      panel.node.onscroll = () => list?.close()
+      panel.node.onscroll = positionPicker
       panel.node.addEventListener('dismiss', () => list?.close())
       const footer = el('div', '', 'pf')
       footer.append(
@@ -185,6 +191,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
       )
       panel.node.append(footer)
       panel.position()
+      panel.node.style.left = 'auto'
       syncMethod()
     },
     'ico',

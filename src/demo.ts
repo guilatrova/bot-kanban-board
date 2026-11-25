@@ -157,7 +157,7 @@ export function demoBoard(state: string | null = null) {
       'Sort field stations by distance',
     ]
     for (let i = 0; i < (state === 'large' ? 120 : state === 'queue50' ? 50 : titles.length); i++) {
-      const number = 10 + i,
+      const number = (state === 'large' ? 200 : 10) + i,
         head = 'station-' + number
       const title = titles[i] ?? 'Update readings for plot ' + (i + 1)
       data.prs.push({

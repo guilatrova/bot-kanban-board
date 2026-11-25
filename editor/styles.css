@@ -20,6 +20,7 @@
   --prs: var(--pr);
   --planned: var(--faint);
   color-scheme: dark;
+  --badge-text: #14171b;
   --settings: #1d2229;
   --group: #ffffff06;
   --divider: #ffffff0a;
@@ -1263,15 +1264,6 @@ article:focus-within .bell,
 .sw:checked::after {
   transform: translateX(14px);
 }
-.settings select {
-  background: var(--control);
-  color: var(--fg);
-  border: 0;
-  border-radius: 8px;
-  padding: 6px 8px;
-  font: inherit;
-  font-size: 12.5px;
-}
 .bp {
   position: relative;
 }
@@ -2109,7 +2101,7 @@ article .check:focus-visible {
   right: 6px;
   bottom: 6px;
   background: var(--pr);
-  color: var(--badge-text, #14171b);
+  color: var(--badge-text);
   font-size: 11px;
   font-weight: 700;
   border-radius: 10px;
@@ -2165,6 +2157,18 @@ article .check:focus-visible {
 .sk-compact {
   padding: 6px 10px;
   margin-bottom: 4px;
+}
+.sk-card:not(.sk-compact) {
+  display: block;
+}
+.sk-card:not(.sk-compact) > .sk {
+  margin: 4px 0;
+}
+.sk-card:not(.sk-compact) > .sk-meta + .sk {
+  margin-top: 10px;
+}
+.sk-compact .sk:nth-child(2) {
+  flex-shrink: 1;
 }
 .sk-compact .sk:last-child {
   margin-left: auto;

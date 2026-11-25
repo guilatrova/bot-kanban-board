@@ -179,7 +179,7 @@ export function view(
         node.oncontextmenu = (e) => {
           e.preventDefault()
           const anchor = element.querySelector<HTMLElement>('.more')
-          if (anchor) actions.menu(row, anchor)
+          if (!closed) actions.menu(row, anchor ?? element)
         }
         node.ondragstart = (e) => {
           zones.item(row)

@@ -14,7 +14,8 @@ async function start() {
   const again = button('Try again', () => run(true))
   state.append(reason, again)
   document.body.append(loading)
-  const visibility = (shown: boolean, initial = false) => orca.plugin.request('board.visibility', { shown, initial })
+  const visibility = (shown: boolean, initial = false) =>
+    orca.plugin.request('board.visibility', { shown, initial }, { timeoutMs: 120000 })
   document.addEventListener('visibilitychange', () => void visibility(!document.hidden).catch(notice))
   window.addEventListener('pagehide', () => void visibility(false).catch(notice))
   await visibility(!document.hidden, true)
@@ -59,6 +60,7 @@ async function start() {
   }
   let dirty = false,
     reading = false
+  let readFailures = 0
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   function showError(message: string) {
     reason.textContent = message
@@ -77,13 +79,19 @@ async function start() {
       do {
         dirty = false
         await read(fresh)
+        readFailures = 0
         fresh = false
       } while (dirty)
     } catch (error) {
       if (board) notice(error)
       else {
-        showError('Could not read the board.')
-        retryTimer = setTimeout(() => void run(true), 90000)
+        const delay = Math.min(360000, 90000 * 2 ** Math.min(2, readFailures++))
+        showError(
+          'Could not read the board. Trying again in ' +
+            (delay === 90000 ? '90 seconds' : delay / 60000 + ' min') +
+            '.',
+        )
+        retryTimer = setTimeout(() => void run(true), delay)
       }
     } finally {
       reading = false

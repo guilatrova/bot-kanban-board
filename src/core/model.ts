@@ -6,6 +6,7 @@ export interface Bot {
   computer: string
   id: string
   name: string
+  warning?: Failure
   home: string | null
 }
 export interface Workspace {
@@ -46,6 +47,7 @@ export interface Item {
 export interface Computer {
   key: string
   name: string
+  warning?: Failure
   source: Source<{ closed?: Record<string, 'done' | 'canceled'>; bots: Bot[]; items: Item[]; workspaces: Workspace[] }>
 }
 export interface IssueRef {

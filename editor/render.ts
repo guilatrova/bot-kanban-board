@@ -1,7 +1,7 @@
 import { buildBoard, toggleBot } from '../src/core/board'
 import { botKey, itemKey, prKey, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, labels, badge, prState, describeFailure, notice, external } from './dom'
+import { el, button, age, labels, badge, prPill, describeFailure, notice, external } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 type Row = Item | MappedPr
@@ -135,6 +135,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       ...board.computers.map((c) => {
         const chip = el('span', c.name + ' · ' + (c.error ? 'Unreachable' : c.count), 'chip')
         if (c.error) chip.append(el('small', describeFailure(c.error)))
+        if (c.warning) chip.append(el('small', describeFailure(c.warning)))
         return chip
       }),
     )
@@ -155,12 +156,13 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           'chip',
         )
         chip.prepend(badge(b.computer, b.name))
+        if (b.warning) chip.append(el('small', describeFailure(b.warning)))
         chip.setAttribute('aria-pressed', String(!selected.size || selected.has(key)))
         return chip
       }),
     )
     message.textContent =
-      data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error)
+      data.itemsAt && !board.bots.length && board.computers.every((c) => !c.error && !c.warning)
         ? 'No bots yet. Open Items will appear here when a bot creates one.'
         : ''
     const alive = new Set<string>()
@@ -218,17 +220,22 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
         const by = isItem ? row : (row.items[0] ?? row.workspaces[0])
         const meta = el('div', '', 'meta')
         if (by) meta.append(badge(by.computer, by.bot))
-        meta.append(el('small', by?.bot ?? 'No bot'), el('time', age(row.updated)))
-        node.append(meta, el('small', isItem ? 'Item #' + row.number : prKey(row)), el('h3', row.title))
+        meta.append(
+          el('small', by?.bot ?? 'No bot'),
+          el('small', isItem ? 'Item #' + row.number : prKey(row), 'ref'),
+          el('time', age(row.updated)),
+        )
+        node.append(meta, el('h3', row.title))
         if (isItem) {
           const more = button(
-            'More',
+            '',
             (e) => {
               e.stopPropagation()
               actions.menu(row)
             },
             'more',
           )
+          more.setAttribute('aria-label', 'More')
           meta.append(more)
           const pending = actions.pending(row)
           if (pending) node.append(el('mark', pending))
@@ -238,13 +245,13 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
               : row.status === 'waiting'
                 ? row.wait
                 : row.workers.findLast((w) => w.subject)?.subject
-          if (sub) node.append(el('p', sub))
+          if (sub) node.append(el('p', sub, 'quote'))
           const active = row.workers.find((w) => w.state === 'working')
-          if (active) node.append(el('mark', '● ' + active.title))
+          if (active) node.append(el('mark', '● ' + active.title, 'running'))
           if (row.chat) node.append(el('small', row.chat))
         } else
           node.append(
-            el('mark', prState(row)),
+            prPill(row),
             el(
               'small',
               ['+' + row.additions + ' −' + row.deletions, row.files + ' files', row.checks]
@@ -283,7 +290,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       lane.hidden = key === 'planned' && !column
       let nodes: HTMLElement[] = []
       if (key === 'prs') {
-        heading.textContent = labels.prs + ' · ' + prs.length
+        heading.replaceChildren(labels.prs, el('span', String(prs.length)))
         if (data.error) {
           prError.textContent = [describeFailure(data.error), data.prsAt ? 'Last read ' + age(data.prsAt) : '']
             .filter(Boolean)
@@ -307,7 +314,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           }
         }
       } else if (key === 'merged') {
-        heading.textContent = 'Merged · ' + board.merged.length
+        heading.replaceChildren('Merged', el('span', 'today ' + board.merged.length))
         const error = data.error || data.mergedError
         if (error) nodes.push(el('p', describeFailure(error)))
         for (const row of board.merged) {
@@ -325,7 +332,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           nodes.push(node)
         }
       } else if (column) {
-        heading.textContent = labels[column.status] + ' · ' + column.items.length
+        heading.replaceChildren(labels[column.status], el('span', String(column.items.length)))
         nodes = column.items.map(card)
       }
       const reading = key === 'prs' || key === 'merged' ? !data.prsAt && !data.error : !data.itemsAt

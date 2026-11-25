@@ -5,7 +5,7 @@ import { computers } from './sources/orca'
 import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
 import { github, files, mergePr } from './sources/github'
 import { openBoard } from './board-file'
-import { avatar } from './avatars'
+import { avatars } from './avatars'
 import { jump } from './jump'
 import { demoBoard } from '../demo'
 import { parseActions, moveState } from '../core/actions'
@@ -29,6 +29,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   const landed = new Map<string, MergedPr>()
   const merging = new Set<string>()
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
+  const avatar = avatars(orca.storage)
   const fileCache = new Map<string, string>()
   function publish(panel?: string) {
     const json = JSON.stringify({ ...data, focus: Boolean(panel) && data.focus }),
@@ -64,11 +65,12 @@ export default async function activate(orca: OrcaWorkerApi) {
       })
       data.itemsAt = Date.now()
       publish()
+      await avatar.prune(data.computers)
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
         .filter((i) => i.status === 'needs_you').length
       const unreachable = data.computers.filter((c) => !c.source.ok).length
-      const hasCount = data.computers.length > unreachable
+      const hasCount = data.computers.some((c) => c.key !== 'discovery' && c.source.ok)
       const text = hasCount
         ? 'Needs you ' + n + (unreachable ? ' · ' + unreachable + ' unreachable' : '')
         : 'Needs you ?'
@@ -115,16 +117,19 @@ export default async function activate(orca: OrcaWorkerApi) {
     else await refresh()
     return null
   })
-  orca.panels.handle('avatar.get', (input) => {
+  orca.panels.handle('avatar.get', async (input) => {
     if (demo) return null
-    const c = data.computers.find((c) => c.key === 'local' && input.computer === c.key)
+    const c = data.computers.find((c) => input.computer === c.key)
     if (!c?.source.ok) return null
     const { bots, workspaces } = c.source.value
-    return avatar(
-      bots.find((b) => b.name === input.bot)?.home ??
-        workspaces.find((w) => w.bot === input.bot && w.home)?.home ??
-        null,
+    const bot = bots.find((b) => b.name === input.bot)
+    if (!bot) return null
+    return avatar.get(
+      c.key,
+      input.bot,
+      bot.home ?? workspaces.find((w) => w.bot === input.bot && w.home)?.home ?? null,
       input.offset,
+      await path('orcaPath'),
     )
   })
   orca.panels.handle('board.jump', async (input) =>

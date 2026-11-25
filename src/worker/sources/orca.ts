@@ -1,5 +1,5 @@
 import { itemKey, type Computer, type Item } from '../../core/model'
-import { bots, items, obj, rows, str, workers, workspaces } from '../../core/normalize'
+import { botOwners, bots, items, obj, rows, str, unpairedComputers, workers, workspaces } from '../../core/normalize'
 import { reader, source } from './read'
 export async function computers(
   path: string,
@@ -15,17 +15,42 @@ export async function computers(
     ),
   )
   const targets = [{ key: 'local', name: 'This computer' }, ...(environments.ok ? environments.value : [])]
-  const results = await Promise.all(
+  const rosters = await Promise.all(
     targets.map(async (target) => {
       const env = ['--environment', target.key, '--json']
-      const result = await source('orca bot list', async () => {
-        const [roster, trees] = await Promise.all([
-          read(['bot', 'list', ...env], (v) => bots(v, target.key)),
-          read(['worktree', 'ps', '--since', '30d', ...env], (v) => workspaces(v, target.key)),
-        ])
-        const closed: Record<string, 'done' | 'canceled'> = {}
-        const byBot = await Promise.all(
-          roster.map(async (bot) => {
+      const roster = await source('orca bot list', () => read(['bot', 'list', ...env], (v) => bots(v, target.key)))
+      return { target, env, roster }
+    }),
+  )
+  const available = rosters.flatMap(({ target, roster }) =>
+    roster.ok ? [{ key: target.key, bots: roster.value }] : [],
+  )
+  const owners = botOwners(available)
+  const unpaired = unpairedComputers(
+    available.flatMap((r) => r.bots),
+    environments.ok ? environments.value : [],
+    owners,
+  )
+  const results = await Promise.all(
+    rosters.map(async ({ target, env, roster }) => {
+      if (!roster.ok) {
+        const computer = { ...target, source: roster }
+        onComputer(computer)
+        return computer
+      }
+      const resident = roster.value.filter((b) => owners.get(b.id) === target.key)
+      if (!resident.length) {
+        const computer: Computer = { ...target, source: { ok: true, value: { bots: [], workspaces: [], items: [] } } }
+        onComputer(computer)
+        return computer
+      }
+      const trees = await source('orca worktree ps', () =>
+        read(['worktree', 'ps', '--since', '30d', ...env], (v) => workspaces(v, target.key)),
+      )
+      const closed: Record<string, 'done' | 'canceled'> = {}
+      const byBot = await Promise.all(
+        resident.map(async (bot) => {
+          const result = await source('orca bot item list', async () => {
             const args = ['--bot', bot.name, ...env],
               live = await read(['bot', 'work', 'list', ...args], workers),
               all: Item[] = []
@@ -61,15 +86,34 @@ export async function computers(
               if (cursor) seen.add(cursor)
             } while (cursor)
             return all
-          }),
-        )
-        return { closed, bots: roster, workspaces: trees, items: byBot.flat() }
-      })
-      const computer = { ...target, source: result }
+          })
+          if (!result.ok) bot.warning = result
+          return result.ok ? result.value : []
+        }),
+      )
+      const computer: Computer = {
+        ...target,
+        warning: trees.ok ? undefined : trees,
+        source: {
+          ok: true,
+          value: {
+            closed,
+            bots: resident,
+            workspaces: trees.ok ? trees.value.filter((w) => resident.some((b) => b.name === w.bot)) : [],
+            items: byBot.flat(),
+          },
+        },
+      }
       onComputer(computer)
       return computer
     }),
   )
-  if (!environments.ok) results.push({ key: 'discovery', name: 'Paired computers', source: environments })
-  return results
+  if (!environments.ok)
+    results.push({
+      key: 'discovery',
+      name: 'Paired computers',
+      warning: environments,
+      source: { ok: true, value: { bots: [], items: [], workspaces: [] } },
+    })
+  return [...results, ...unpaired]
 }

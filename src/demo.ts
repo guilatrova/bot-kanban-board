@@ -120,6 +120,25 @@ export function demoBoard(state: string | null = null) {
     error: null,
     focus: false,
   }
+  if (state === 'paired' || state === 'bot-warning') {
+    const station = data.computers[0]!
+    station.key = 'field-station'
+    if (station.source.ok) {
+      for (const row of [...station.source.value.bots, ...station.source.value.items]) row.computer = station.key
+      if (state === 'bot-warning')
+        station.source.value.bots[0]!.warning = {
+          ok: false,
+          command: 'orca bot work list',
+          message: 'Work list unavailable.',
+          next: 'Refresh to retry.',
+        }
+    }
+    data.computers.unshift({
+      key: 'local',
+      name: 'This computer',
+      source: { ok: true, value: { bots: [], items: [], workspaces: [] } },
+    })
+  }
   if (state === 'unreachable')
     data.computers.push({
       key: 'other',

@@ -1,4 +1,4 @@
-import { el, button, age, labels, notice, prState, external, badge } from './dom'
+import { el, button, age, labels, notice, prPill, external, badge } from './dom'
 import { showFiles } from './diff'
 import { itemKey, prKey, type Item, type MappedPr, type Workspace } from '../src/core/model'
 export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: Item) => HTMLElement) {
@@ -75,12 +75,16 @@ export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: It
     body.append(
       el('small', prKey(p) + ' · ' + age(p.updated)),
       el('h2', p.title),
-      el('mark', prState(p)),
-      el('p', '+' + p.additions + ' −' + p.deletions + ' · ' + p.files + ' files'),
-      button('Merge', () => {
-        dialog.close()
-        openMerge(p)
-      }),
+      prPill(p),
+      el('p', '+' + p.additions + ' −' + p.deletions + ' · ' + p.files + ' files', 'diff-counts'),
+      button(
+        'Merge',
+        () => {
+          dialog.close()
+          openMerge(p)
+        },
+        'merge-action',
+      ),
       external('Files on GitHub', p.url + '/files'),
       external('Conversation on GitHub', p.url),
     )

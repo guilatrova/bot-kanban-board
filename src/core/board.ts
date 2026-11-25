@@ -53,12 +53,15 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
     selected,
     merged: merged.filter((pr) => !view.needsMeOnly && !selected.size && acceptsRepo(pr.repo)),
     bots: bots.map((b) => ({ ...b, count: items.filter((i) => i.bot === b.name && i.computer === b.computer).length })),
-    computers: computers.map((c) => ({
-      key: c.key,
-      name: c.name,
-      error: c.source.ok ? null : c.source,
-      count: items.filter((i) => i.computer === c.key).length,
-    })),
+    computers: computers
+      .filter((c) => !c.source.ok || c.source.value.bots.length || c.warning)
+      .map((c) => ({
+        key: c.key,
+        name: c.name,
+        warning: c.warning,
+        error: c.source.ok ? null : c.source,
+        count: items.filter((i) => i.computer === c.key).length,
+      })),
     ordered: mapped,
     ready: mapped.filter((p) => p.how && !p.draft),
     draft: mapped.filter((p) => p.how && p.draft),

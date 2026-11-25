@@ -1,6 +1,7 @@
 import {
   statuses,
   type Bot,
+  type Computer,
   type Item,
   type Status,
   type Worker,
@@ -28,10 +29,58 @@ export function num(row: Record<string, unknown>, key: string) {
 }
 const opt = (v: unknown) => (typeof v === 'string' ? v : null)
 const nested = (v: unknown) => (v == null ? {} : obj(v))
-export function bots(data: unknown, computer: string): Bot[] {
+type RosterBot = Bot & { server?: { name: string; on: string } }
+export function bots(data: unknown, computer: string): RosterBot[] {
   return rows(obj(data).bots)
     .map(obj)
-    .map((b) => ({ computer, id: str(b, 'id'), name: str(b, 'name'), home: opt(b.botHome) }))
+    .map((b) => {
+      const bot = { computer, id: str(b, 'id'), name: str(b, 'name'), home: opt(b.botHome) }
+      if (!b.server) return bot
+      const server = obj(b.server)
+      const name = str(server, 'name'),
+        on = opt(server.on) ?? opt(server.id) ?? name
+      return { ...bot, computer: 'federated:' + on, home: null, server: { name, on } }
+    })
+}
+export function botOwners(rosters: { key: string; bots: RosterBot[] }[]) {
+  const owners = new Map<string, string>()
+  // A saved environment is authoritative when a local roster repeats its UUID.
+  for (const roster of rosters)
+    for (const bot of roster.bots) {
+      if (!bot.server && (!owners.has(bot.id) || owners.get(bot.id) === 'local')) owners.set(bot.id, roster.key)
+    }
+  for (const roster of rosters)
+    for (const bot of roster.bots) {
+      if (bot.server && (!owners.has(bot.id) || owners.get(bot.id) === 'local')) owners.set(bot.id, bot.computer)
+    }
+  return owners
+}
+
+export function unpairedComputers(
+  roster: RosterBot[],
+  saved: { key: string; name: string }[],
+  owners: Map<string, string>,
+): Computer[] {
+  const groups = new Map<string, { name: string; bots: Map<string, Bot> }>()
+  for (const bot of roster) {
+    const server = bot.server
+    if (!server || saved.some((e) => e.key === server.on || e.name === server.on)) continue
+    if (owners.get(bot.id) !== bot.computer) continue
+    const group = groups.get(bot.computer) ?? { name: server.name, bots: new Map<string, Bot>() }
+    group.bots.set(bot.id, bot)
+    groups.set(bot.computer, group)
+  }
+  return [...groups].map(([key, group]) => ({
+    key,
+    name: group.name,
+    warning: {
+      ok: false,
+      command: 'orca environment list',
+      message: group.name + ' is not available as a saved environment.',
+      next: 'Pair this computer to read its bot activity.',
+    },
+    source: { ok: true, value: { bots: [...group.bots.values()], items: [], workspaces: [] } },
+  }))
 }
 export function workspaces(data: unknown, computer: string): Workspace[] {
   return rows(obj(data).worktrees)

@@ -1,19 +1,99 @@
-:root {
-  --dialog-shadow: 0 16px 60px #0005;
-  --radius: var(--orca-radius);
-  --planned: var(--orca-muted-foreground);
-  --needs_you: light-dark(#9e620c, #efb653);
-  --in_progress: light-dark(#17785e, #65cba2);
-  --waiting: light-dark(#585ab3, #a1a6ef);
-  --prs: light-dark(#8243a4, #c492e6);
-  --edge: var(--orca-border);
-  --dim: var(--orca-muted-foreground);
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/geist.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
 }
-html.dark {
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./fonts/geist-mono.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+[hidden] {
+  display: none !important;
+}
+:root {
+  --needs_you: var(--needs);
+  --in_progress: var(--run);
+  --waiting: var(--wait);
+  --prs: var(--pr);
+  --planned: var(--faint);
   color-scheme: dark;
+  --bg: #0e1013;
+  --lane: #14171b;
+  --card: #1b1f25;
+  --card-hover: #222730;
+  --raise: #262c35;
+  --line: #2a303a;
+  --fg: #e7eaee;
+  --dim: #9aa3af;
+  --faint: #6b7480;
+  --needs: #f2b34b;
+  --run: #55c2a2;
+  --wait: #8f9bf0;
+  --pr: #c58af0;
+  --bad: #ef7d6d;
+  --ok: #55c2a2;
+  --needs-soft: #f2b34b1f;
+  --run-soft: #55c2a21f;
+  --wait-soft: #8f9bf01f;
+  --pr-soft: #c58af01f;
+  --bad-soft: #ef7d6d1f;
+  --shadow: 0 18px 50px #000000a6;
+  --sans: 'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) {
+    color-scheme: light;
+    --bg: #f3f4f6;
+    --lane: #e9ebee;
+    --card: #ffffff;
+    --card-hover: #ffffff;
+    --raise: #f3f4f6;
+    --line: #d6dae0;
+    --fg: #171a1f;
+    --dim: #555e6b;
+    --faint: #7d8693;
+    --needs: #a66a00;
+    --run: #107a5c;
+    --wait: #4350c4;
+    --pr: #8540c0;
+    --bad: #c0392b;
+    --ok: #107a5c;
+    --needs-soft: #a66a001c;
+    --run-soft: #107a5c1c;
+    --wait-soft: #4350c41c;
+    --pr-soft: #8540c01c;
+    --bad-soft: #c0392b1c;
+    --shadow: 0 18px 50px #1b20302e;
+  }
 }
 html.light {
   color-scheme: light;
+  --bg: #f3f4f6;
+  --lane: #e9ebee;
+  --card: #ffffff;
+  --card-hover: #ffffff;
+  --raise: #f3f4f6;
+  --line: #d6dae0;
+  --fg: #171a1f;
+  --dim: #555e6b;
+  --faint: #7d8693;
+  --needs: #a66a00;
+  --run: #107a5c;
+  --wait: #4350c4;
+  --pr: #8540c0;
+  --bad: #c0392b;
+  --ok: #107a5c;
+  --needs-soft: #a66a001c;
+  --run-soft: #107a5c1c;
+  --wait-soft: #4350c41c;
+  --pr-soft: #8540c01c;
+  --bad-soft: #c0392b1c;
+  --shadow: 0 18px 50px #1b20302e;
 }
 * {
   box-sizing: border-box;
@@ -24,9 +104,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--orca-background);
-  color: var(--orca-foreground);
-  font: 13px/1.45 var(--orca-font-sans, system-ui);
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 var(--sans);
 }
 header,
 nav {
@@ -36,18 +116,19 @@ nav {
   padding: 10px 18px;
 }
 header {
-  min-height: 54px;
+  min-height: 42px;
+  flex-wrap: wrap;
 }
 h1 {
-  font-size: 19px;
-  letter-spacing: -0.04em;
-  margin: 0 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
 }
 header > small {
   margin-left: auto;
 }
 nav {
-  border-block: 1px solid var(--edge);
   overflow-x: auto;
 }
 small,
@@ -64,39 +145,42 @@ time {
 .chip,
 button,
 mark {
-  border-radius: var(--radius);
+  border-radius: var(--r);
 }
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
-  border: 1px solid var(--edge);
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 13px;
+  background: var(--lane);
+  color: var(--dim);
   white-space: nowrap;
 }
 .chip small {
   white-space: normal;
 }
 .chip[aria-pressed='false'] {
-  opacity: 0.55;
+  opacity: 0.45;
 }
 button,
 summary {
   cursor: pointer;
 }
 button {
-  background: var(--orca-card);
+  background: var(--card);
   color: inherit;
-  border: 1px solid var(--edge);
+  border: 0;
   font: inherit;
   padding: 5px 9px;
 }
 button:hover,
 summary:hover {
-  background: var(--orca-accent);
+  background: var(--card-hover);
 }
 :focus-visible {
-  outline: 2px solid var(--orca-ring);
+  outline: 2px solid var(--wait);
   outline-offset: 2px;
 }
 main {
@@ -104,59 +188,50 @@ main {
   flex: 1;
   display: flex;
   gap: 10px;
-  padding: 12px;
+  padding: 0 16px 12px;
   overflow-x: auto;
 }
 .lane {
-  background: var(--orca-muted);
-  border-radius: var(--radius);
-  min-width: 230px;
+  background: var(--lane);
+  border-radius: var(--r);
+  min-width: 240px;
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-.lane[hidden] {
-  display: none;
 }
 .lane > h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  padding: 13px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 12px 8px;
   margin: 0;
   color: var(--tone);
-}
-.lane > h2:before {
-  content: '';
-  background: currentColor;
-  border-radius: 50%;
-  width: 7px;
-  height: 7px;
 }
 .list {
   overflow: auto;
   overflow-anchor: none;
-  padding: 0 8px 16px;
+  padding: 2px 8px 10px;
 }
 article {
-  margin-bottom: 8px;
-  padding: 12px;
-  border-radius: var(--radius);
-  background: var(--orca-card);
-  color: var(--orca-card-foreground);
-  border: 1px solid var(--edge);
-  cursor: pointer;
-  animation: appear 0.15s ease-out;
+  position: relative;
+  margin-bottom: 7px;
+  padding: 10px 11px 9px;
+  border-radius: var(--r);
+  background: var(--card);
+  cursor: grab;
 }
 article:hover {
-  border-color: color-mix(in srgb, var(--tone) 55%, var(--edge));
+  background: var(--card-hover);
 }
 .meta {
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 .meta small {
   color: inherit;
@@ -169,11 +244,11 @@ article:hover {
   place-items: center;
   vertical-align: middle;
   flex: none;
-  width: 23px;
-  height: 23px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   overflow: hidden;
-  background: color-mix(in srgb, var(--tint) 17%, var(--orca-card));
+  background: color-mix(in srgb, var(--tint) 17%, var(--card));
   color: var(--tint);
   font-size: 10px;
   font-weight: 650;
@@ -184,9 +259,12 @@ article:hover {
   object-fit: cover;
 }
 article h3 {
-  font-size: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
   line-height: 1.35;
-  margin: 4px 0 8px;
+  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+  margin: 7px 0;
 }
 article p {
   color: var(--dim);
@@ -202,7 +280,7 @@ mark {
 mark,
 .link {
   display: inline-block;
-  background: color-mix(in srgb, var(--tone, var(--prs)) 12%, var(--orca-card));
+  background: color-mix(in srgb, var(--tone, var(--prs)) 12%, var(--card));
   color: var(--tone, var(--prs));
   font-size: 11px;
   padding: 3px 6px;
@@ -222,23 +300,25 @@ dialog {
   margin: 0;
   height: 100%;
   max-height: 100%;
-  width: min(500px, 95vw);
+  width: min(460px, 100vw);
   max-width: 95vw;
-  background: var(--orca-card);
+  background: var(--card);
   color: inherit;
   border: 0;
-  border-left: 1px solid var(--edge);
-  padding: 22px;
+  box-shadow: var(--shadow);
+  background: var(--lane);
+  padding: 14px 16px 20px;
   animation: enter 0.18s ease-out;
 }
 dialog::backdrop {
-  background: color-mix(in srgb, var(--orca-background) 60%, transparent);
+  background: #0006;
 }
 dialog > button {
   float: right;
 }
 dialog h2 {
-  font-size: 24px;
+  font-size: 18px;
+  font-weight: 600;
   line-height: 1.2;
 }
 dialog h3 {
@@ -253,8 +333,8 @@ dialog p {
 }
 .option,
 summary {
-  background: var(--orca-muted);
-  border-radius: var(--radius);
+  background: var(--lane);
+  border-radius: var(--r);
   padding: 8px;
 }
 details {
@@ -264,32 +344,32 @@ summary {
   overflow-wrap: anywhere;
 }
 pre {
-  font: 11px/1.55 var(--orca-font-mono, monospace);
+  font: 11px/1.55 var(--mono);
   overflow: auto;
   padding: 8px;
-  background: var(--orca-background);
+  background: var(--bg);
 }
 .added {
   color: var(--in_progress);
 }
 .removed {
-  color: var(--orca-destructive);
+  color: var(--bad);
 }
 #notice:not(:empty) {
   position: fixed;
   bottom: 14px;
   left: 16px;
-  background: var(--orca-card);
-  border: 1px solid var(--edge);
+  background: var(--card);
+  border: 0;
   padding: 8px;
   z-index: 3;
 }
 .skeleton {
   margin-bottom: 8px;
-  background: linear-gradient(105deg, var(--orca-card) 35%, var(--orca-accent), var(--orca-card) 65%);
+  background: linear-gradient(105deg, var(--card) 35%, var(--card-hover), var(--card) 65%);
   background-size: 250%;
   height: 110px;
-  border-radius: var(--radius);
+  border-radius: var(--r);
   animation: pulse 1.4s infinite;
 }
 @keyframes pulse {
@@ -338,13 +418,15 @@ pre {
   display: block;
   text-align: left;
   width: 100%;
-  padding: 12px;
-  background: var(--orca-card);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
+  padding: 8px 4px;
+  background: transparent;
+  border-radius: 4px;
 }
 .merged-card h3 {
-  margin: 6px 0;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--dim);
+  margin: 3px 0;
 }
 .merge-dialog {
   inset: 0;
@@ -352,9 +434,9 @@ pre {
   height: fit-content;
   max-height: 90vh;
   width: min(470px, 90vw);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  box-shadow: var(--dialog-shadow);
+  border: 0;
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
 }
 .merge-dialog h2 {
   margin: 8px 0 16px;
@@ -368,21 +450,21 @@ pre {
   margin-top: 18px;
 }
 .merge-dialog select {
-  background: var(--orca-muted);
+  background: var(--lane);
   color: inherit;
-  border: 1px solid var(--edge);
+  border: 0;
   padding: 6px;
-  border-radius: var(--radius);
+  border-radius: var(--r);
 }
 .warning {
   border-left: 3px solid var(--needs_you);
   padding: 6px 10px;
-  background: var(--orca-muted);
+  background: var(--lane);
   margin: 6px 0;
 }
 .warning.danger {
-  border-color: var(--orca-destructive);
-  color: var(--orca-destructive);
+  border-color: var(--bad);
+  color: var(--bad);
 }
 .merge-facts label {
   display: block;
@@ -390,15 +472,15 @@ pre {
 }
 .confirm {
   background: var(--in_progress);
-  color: var(--orca-background);
+  color: var(--bg);
 }
 .confirm.danger {
-  background: var(--orca-destructive);
-  color: var(--orca-background);
+  background: var(--bad);
+  color: var(--bg);
 }
 .merge-steps {
   width: 100%;
-  border-top: 1px solid var(--edge);
+  border-top: 1px solid var(--line);
 }
 .merge-steps [data-state='running'] {
   color: var(--needs_you);
@@ -407,7 +489,7 @@ pre {
   color: var(--in_progress);
 }
 .merge-steps [data-state='failed'] {
-  color: var(--orca-destructive);
+  color: var(--bad);
 }
 @media (prefers-reduced-motion: no-preference) {
   .landed {
@@ -430,11 +512,11 @@ dialog label {
 .controls input,
 .controls textarea,
 select {
-  background: var(--orca-muted);
+  background: var(--lane);
   color: inherit;
   padding: 6px;
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
+  border: 0;
+  border-radius: var(--r);
 }
 .controls textarea {
   width: 95%;
@@ -460,28 +542,227 @@ select {
   display: flex;
   gap: 10px;
   padding: 10px;
-  border-radius: var(--radius);
-  background: var(--orca-card);
-  box-shadow: var(--dialog-shadow);
+  border-radius: var(--r);
+  background: var(--card);
+  box-shadow: var(--shadow);
 }
 .dock > div {
   padding: 10px 24px;
-  border: 1px dashed var(--edge);
-  border-radius: var(--radius);
+  border: 1px dashed var(--line);
+  border-radius: var(--r);
 }
 .drag-item [data-key='planned'][hidden] {
-  display: block;
+  display: block !important;
 }
 .drag-item .lane:not([data-key='merged'], [data-key='prs']) {
   outline: 1px dashed var(--tone);
 }
-button[aria-pressed='true'] {
-  border-color: var(--orca-ring);
-}
+
 header {
   overflow-x: auto;
   flex-shrink: 0;
 }
 header > * {
   flex-shrink: 0;
+}
+
+.lane {
+  border-radius: 8px;
+}
+.lane[data-key='merged'] {
+  flex: 0.72;
+  min-width: 210px;
+}
+.lane h2 span,
+.meta .ref,
+.merged-card small {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.meta {
+  gap: 7px;
+}
+.meta small:first-of-type {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.quote {
+  font-size: 12.5px;
+  padding-left: 9px;
+  box-shadow: inset 2px 0 var(--tone);
+  margin: 7px 0;
+}
+.more {
+  opacity: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  color: var(--dim);
+}
+@media (max-width: 720px) {
+  .more {
+    opacity: 1;
+  }
+}
+article:hover .more,
+article:focus-within .more {
+  opacity: 1;
+}
+button[aria-pressed='true'] {
+  background: var(--raise);
+  color: var(--fg);
+}
+.empty {
+  text-align: center;
+  padding: 18px 6px;
+  color: var(--faint);
+  font-size: 12px;
+}
+dialog section > .avatar {
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+}
+dialog section > .avatar + small {
+  display: inline;
+  font: 11px var(--mono);
+}
+dialog h3 {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+dialog p {
+  color: var(--dim);
+}
+dialog button {
+  background: var(--raise);
+}
+.controls,
+.merge-dialog {
+  background: var(--lane);
+}
+.dock:not([hidden]) {
+  background: var(--raise);
+  border-radius: 12px;
+}
+.merged-card + .merged-card {
+  box-shadow: inset 0 1px var(--line);
+}
+.meta .ref {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 1100px) {
+  body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  nav {
+    padding-left: 0;
+  }
+  body > .message,
+  main {
+    grid-column: 1 / -1;
+  }
+  .dock:not([hidden]) {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+.more::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  background:
+    radial-gradient(circle at 3px 7px, currentColor 1px, transparent 1.5px),
+    radial-gradient(circle at 7px 7px, currentColor 1px, transparent 1.5px),
+    radial-gradient(circle at 11px 7px, currentColor 1px, transparent 1.5px);
+}
+.more:hover,
+.more:focus-visible {
+  background: var(--raise);
+}
+mark,
+.link {
+  border-radius: 4px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 0 6px;
+}
+mark.running,
+mark.ready {
+  background: var(--run-soft);
+  color: var(--run);
+}
+mark.conflict {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+mark.draft {
+  background: var(--raise);
+  color: var(--dim);
+}
+.list > h3,
+.list > details > summary {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+.dock > div {
+  border: 0;
+  background: var(--card);
+  border-radius: 6px;
+}
+.dock > div:first-child {
+  color: var(--run);
+  background: var(--run-soft);
+}
+.dock > div:last-child {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+.option {
+  background: var(--needs-soft);
+  color: var(--fg);
+}
+dialog section > .avatar + small + small {
+  display: inline;
+  margin-left: 8px;
+  font: 11px var(--mono);
+}
+dialog .diff-counts {
+  display: inline;
+  font: 11px var(--mono);
+  margin-left: 8px;
+}
+dialog .diff-counts::after {
+  content: '';
+  display: block;
+  margin-bottom: 10px;
+}
+dialog .merge-action {
+  background: var(--run);
+  color: var(--bg);
+  font-weight: 600;
+}
+dialog section details {
+  margin: 0;
+  box-shadow: inset 0 -1px var(--line);
+}
+dialog section summary {
+  font: 11.5px var(--mono);
+  color: var(--dim);
+  padding: 7px 0;
+  background: transparent;
 }

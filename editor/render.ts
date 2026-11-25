@@ -135,6 +135,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       ...board.computers.map((c) => {
         const chip = el('span', c.name + ' · ' + (c.error ? 'Unreachable' : c.count), 'chip')
         if (c.error) chip.append(el('small', describeFailure(c.error)))
+        if (c.warning) chip.append(el('small', describeFailure(c.warning)))
         return chip
       }),
     )
@@ -155,6 +156,7 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
           'chip',
         )
         chip.prepend(badge(b.computer, b.name))
+        if (b.warning) chip.append(el('small', describeFailure(b.warning)))
         chip.setAttribute('aria-pressed', String(!selected.size || selected.has(key)))
         return chip
       }),

@@ -21,6 +21,19 @@ describe('normalize', () => {
     expect(() => bots({ bots: [{}] }, 'local')).toThrow('id')
     expect(() => pullRequest({ ...sample.pr, changedFiles: null })).toThrow('changedFiles')
   })
+  it('queries a federated bot only on the runtime that lists it as resident', () => {
+    const clio = { id: 'clio-id', name: 'Clio' }
+    const mac = bots({ bots: [{ ...clio, server: { name: 'Dell', id: 'dell' } }] }, 'local')
+    const dell = bots({ bots: [clio] }, 'dell')
+    expect(mac).toEqual([])
+    expect(dell.map((b) => b.computer)).toEqual(['dell'])
+    const board = buildBoard(
+      [{ key: 'local', name: 'Mac', source: { ok: true, value: { bots: mac, items: [], workspaces: [] } } }],
+      [],
+      allView,
+    )
+    expect(board.computers).toEqual([])
+  })
   it('preserves optional data and excludes closed rows', () => {
     expect(item.chat).toBeNull()
     expect(item.options).toEqual(['First'])

@@ -31,6 +31,7 @@ const nested = (v: unknown) => (v == null ? {} : obj(v))
 export function bots(data: unknown, computer: string): Bot[] {
   return rows(obj(data).bots)
     .map(obj)
+    .filter((b) => !b.server) // Federated rows belong to the named server and appear on its own roster.
     .map((b) => ({ computer, id: str(b, 'id'), name: str(b, 'name'), home: opt(b.botHome) }))
 }
 export function workspaces(data: unknown, computer: string): Workspace[] {

@@ -18,14 +18,19 @@ export async function computers(
   const results = await Promise.all(
     targets.map(async (target) => {
       const env = ['--environment', target.key, '--json']
-      const result = await source('orca bot list', async () => {
-        const [roster, trees] = await Promise.all([
-          read(['bot', 'list', ...env], (v) => bots(v, target.key)),
-          read(['worktree', 'ps', '--since', '30d', ...env], (v) => workspaces(v, target.key)),
-        ])
-        const closed: Record<string, 'done' | 'canceled'> = {}
-        const byBot = await Promise.all(
-          roster.map(async (bot) => {
+      const roster = await source('orca bot list', () => read(['bot', 'list', ...env], (v) => bots(v, target.key)))
+      if (!roster.ok) {
+        const computer = { ...target, source: roster }
+        onComputer(computer)
+        return computer
+      }
+      const trees = await source('orca worktree ps', () =>
+        read(['worktree', 'ps', '--since', '30d', ...env], (v) => workspaces(v, target.key)),
+      )
+      const closed: Record<string, 'done' | 'canceled'> = {}
+      const byBot = await Promise.all(
+        roster.value.map(async (bot) => {
+          const result = await source('orca bot item list', async () => {
             const args = ['--bot', bot.name, ...env],
               live = await read(['bot', 'work', 'list', ...args], workers),
               all: Item[] = []
@@ -61,11 +66,19 @@ export async function computers(
               if (cursor) seen.add(cursor)
             } while (cursor)
             return all
-          }),
-        )
-        return { closed, bots: roster, workspaces: trees, items: byBot.flat() }
-      })
-      const computer = { ...target, source: result }
+          })
+          if (!result.ok) bot.warning = result
+          return result.ok ? result.value : []
+        }),
+      )
+      const computer: Computer = {
+        ...target,
+        warning: trees.ok ? undefined : trees,
+        source: {
+          ok: true,
+          value: { closed, bots: roster.value, workspaces: trees.ok ? trees.value : [], items: byBot.flat() },
+        },
+      }
       onComputer(computer)
       return computer
     }),

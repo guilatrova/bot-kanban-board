@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import sample from './fixtures/board.json'
-import { botOwners, bots, items, pullRequest } from '../src/core/normalize'
+import { botOwners, bots, unpairedComputers, items, pullRequest } from '../src/core/normalize'
 import { mapPrs } from '../src/core/map-prs'
 import { allView, buildBoard, toggleBot } from '../src/core/board'
 import { botKey, type Bot, type Computer, type Workspace } from '../src/core/model'
@@ -31,14 +31,29 @@ describe('normalize', () => {
         { key: 'dell', bots: dell },
       ]).get(clio.id),
     ).toBe('dell')
-    expect(mac).toEqual([])
+    expect(mac[0]?.computer).toBe('federated:dell')
+    expect(unpairedComputers(mac, [{ key: 'dell', name: 'Dell' }], new Map())).toEqual([])
     expect(dell.map((b) => b.computer)).toEqual(['dell'])
     const board = buildBoard(
-      [{ key: 'local', name: 'Mac', source: { ok: true, value: { bots: mac, items: [], workspaces: [] } } }],
+      [
+        {
+          key: 'local',
+          name: 'Mac',
+          source: { ok: true, value: { bots: mac.filter((b) => b.computer === 'local'), items: [], workspaces: [] } },
+        },
+      ],
       [],
       allView,
     )
     expect(board.computers).toEqual([])
+  })
+  it('shows a federated bot once under its unpaired server with a named warning', () => {
+    const bot = { id: 'clio', name: 'Clio', server: { name: 'Field station', on: 'field-id' } }
+    const roster = bots({ bots: [bot, bot] }, 'local')
+    const computers = unpairedComputers(roster, [], new Map())
+    const board = buildBoard(computers, [], allView)
+    expect(board.bots.map((b) => [b.name, b.computer])).toEqual([['Clio', 'federated:field-id']])
+    expect(board.computers[0]?.warning?.message).toContain('Field station')
   })
   it('preserves optional data and excludes closed rows', () => {
     expect(item.chat).toBeNull()

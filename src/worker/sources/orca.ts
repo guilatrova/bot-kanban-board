@@ -1,5 +1,5 @@
 import { itemKey, type Computer, type Item } from '../../core/model'
-import { botOwners, bots, items, obj, rows, str, workers, workspaces } from '../../core/normalize'
+import { botOwners, bots, items, obj, rows, str, unpairedComputers, workers, workspaces } from '../../core/normalize'
 import { reader, source } from './read'
 export async function computers(
   path: string,
@@ -22,8 +22,14 @@ export async function computers(
       return { target, env, roster }
     }),
   )
-  const owners = botOwners(
-    rosters.flatMap(({ target, roster }) => (roster.ok ? [{ key: target.key, bots: roster.value }] : [])),
+  const available = rosters.flatMap(({ target, roster }) =>
+    roster.ok ? [{ key: target.key, bots: roster.value }] : [],
+  )
+  const owners = botOwners(available)
+  const unpaired = unpairedComputers(
+    available.flatMap((r) => r.bots),
+    environments.ok ? environments.value : [],
+    owners,
   )
   const results = await Promise.all(
     rosters.map(async ({ target, env, roster }) => {
@@ -109,5 +115,5 @@ export async function computers(
       warning: environments,
       source: { ok: true, value: { bots: [], items: [], workspaces: [] } },
     })
-  return results
+  return [...results, ...unpaired]
 }

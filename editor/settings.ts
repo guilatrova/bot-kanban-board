@@ -3,6 +3,8 @@ import { botKey, type Computer } from '../src/core/model'
 import { badge, button, el, external, notice } from './dom'
 import { icon } from './lanes'
 import { popover } from './popover'
+export const pluginVersion = '0.3.2'
+
 export async function readMergeSettings(demo: boolean) {
   const key = demo ? 'demo-merge-preferences' : 'merge-preferences'
   const state = await orca.storage.get(key)
@@ -185,7 +187,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
       panel.node.addEventListener('dismiss', () => list?.close())
       const footer = el('div', '', 'pf')
       footer.append(
-        el('span', 'Bot Kanban Board 0.3.1'),
+        el('span', 'Bot Kanban Board ' + pluginVersion),
         external('Who created this?', 'https://github.com/guilatrova'),
       )
       panel.node.append(footer)

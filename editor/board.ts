@@ -58,7 +58,10 @@ async function start() {
       )
     }
     board.draw(data)
-    drawn = true
+    if (!drawn) {
+      drawn = true
+      window.dispatchEvent(new CustomEvent('board-drawn', { detail: notice }))
+    }
     loading.remove()
     state.remove()
   }

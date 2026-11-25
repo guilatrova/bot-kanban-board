@@ -4,6 +4,8 @@ Open **Open bots board** from the Orca command palette to see open Items on this
 
 Item drawers show the question, suggested replies, worker reports and links to related pull requests. **Answer in Orca** opens the bot workspace so you can reply in its chat. Pull request drawers show changed files, expandable diffs and links to GitHub. The board matches pull requests by workspace branch, direct Item reference or closing issue.
 
+Drag a pull request to **Merged** or select **Merge** in its drawer to review its warnings and allowed methods. Confirming a draft marks it ready before attempting the merge. The Merged column shows today’s merges in local time, newest first. Click a merged card to open it on GitHub.
+
 ## Install
 
 Use Orca desktop 1.4.274 or later on macOS or Linux. Install the Orca CLI and GitHub CLI, then sign in with `gh auth login`. From the checkout, run `orca plugin dev load . --json`. Review the requested permissions and follow the approval command Orca prints. Open the board from your own desktop session.
@@ -20,6 +22,8 @@ Use Orca desktop 1.4.274 or later on macOS or Linux. Install the Orca CLI and Gi
 **Refresh** reads both sources immediately. A GitHub failure keeps the last successful pull request list with its age. Only the bot filter is stored between sessions.
 
 ## Known limits
+
+- Merged history reads the first 40 GitHub search results sorted by update time. Merge queues require continuing on GitHub. After merging, tell the owning bot in Orca.
 
 - GitHub search reads up to five pages of 40 open pull requests. The board shows the open total. The PR files API returns up to 3,000 files. When fewer files arrive than the reported number of changes, the drawer shows both counts and a GitHub files link. Binary and large files can have no patch.
 - Remote bots use initials. Orca's file commands open tabs, and its terminal read command reads terminal output. Neither returns the contents of a paired bot's avatar file. Local bots use initials if their PNG is unavailable.

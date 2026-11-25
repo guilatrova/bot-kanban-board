@@ -1,3 +1,5 @@
+import { prKey } from '../src/core/model'
+import { manualBotNotification } from '../src/core/merge'
 import { items, bots, pullRequest } from '../src/core/normalize'
 import type { Snapshot } from '../src/protocol'
 import type { OrcaFrameApi } from 'orca/frame'
@@ -49,6 +51,15 @@ const demoItems = entries.flatMap(([status, title, subject], n) =>
 )
 const pr = pullRequest(fixture.pr)
 pr.title = 'Add collection markers to the field map'
+pr.sha = 'a'.repeat(40)
+if (['warnings', 'danger', 'failure', 'progress'].includes(state || '')) {
+  pr.draft = true
+  pr.checks = null
+  pr.base = 'spring-survey'
+  pr.additions = 5012
+}
+if (state === 'danger') pr.title = 'Test only · do not merge field readings'
+if (state === 'conflict') pr.mergeable = 'CONFLICTING'
 pr.updated = new Date(Date.now() - 2300000).toISOString()
 const data: Snapshot = {
   computers: [
@@ -62,6 +73,18 @@ const data: Snapshot = {
     pr,
     { ...pr, number: 2, title: 'Update watering calendar', head: 'calendar', draft: true, body: '', closes: [] },
   ],
+  repos: {
+    [pr.repo]: {
+      ok: true,
+      value: {
+        push: state !== 'no-permission',
+        defaultBranch: 'main',
+        methods: ['squash', 'merge', 'rebase'],
+      },
+    },
+  },
+  merged: [],
+  mergedError: null,
   total: 2,
   prsAt: Date.now(),
   itemsAt: Date.now(),
@@ -99,10 +122,38 @@ const fake = {
   },
   plugin: {
     on: (k: string, fn: (v: unknown) => void) => handlers.set(k, fn),
-    request: (k: string) => {
+    request: async (k: string, input?: { repo: string; number: number }) => {
       if (k === 'board.get' || k === 'board.refresh') {
         if (state !== 'loading') send()
         return null
+      }
+      if (k === 'pr.merge' && input) {
+        const row = data.prs.find((p) => p.repo === input.repo && p.number === input.number)!
+        const key = prKey(row)
+        for (const step of row.draft ? ['ready', 'merge'] : ['merge']) {
+          handlers.get('merge.progress')?.({ key, step, state: 'running' })
+          await new Promise((resolve) => setTimeout(resolve, 900))
+          if (state === 'failure' && step === 'merge') {
+            handlers.get('merge.progress')?.({ key, step, state: 'failed' })
+            return {
+              ok: false,
+              command: 'gh api',
+              message: 'Required status check "field survey" is pending.',
+              next: 'Wait for the check and merge it on GitHub.',
+            }
+          }
+          if (step === 'ready') row.draft = false
+          handlers.get('merge.progress')?.({ key, step, state: 'done' })
+        }
+        data.merged.unshift({
+          ...row,
+          mergedAt: new Date().toISOString(),
+          notification: manualBotNotification,
+        })
+        data.prs = data.prs.filter((p) => p !== row)
+        data.total--
+        send()
+        return { ok: true, value: null }
       }
       if (k === 'pr.files')
         return {
@@ -128,6 +179,6 @@ const fake = {
 }
 window.orca = {
   ...fake,
-  plugin: { ...fake.plugin, request: async (k: string) => fake.plugin.request(k) },
+  plugin: fake.plugin,
 } as unknown as OrcaFrameApi
 void import('./board')

@@ -1,7 +1,24 @@
+import type { MergedPr, MergeMethod, RepositoryFacts } from './core/merge'
+export interface MergeInput {
+  repo: string
+  number: number
+  updated: string
+  sha: string
+  method: MergeMethod
+}
+export interface Progress {
+  key: string
+  step: 'ready' | 'merge'
+  state: 'running' | 'done' | 'failed'
+  failure?: Failure
+}
 import type { Computer, Failure, PullRequest, Source } from './core/model'
 export interface Snapshot {
   computers: Computer[]
   prs: PullRequest[]
+  repos: Record<string, Source<RepositoryFacts>>
+  merged: MergedPr[]
+  mergedError: Failure | null
   total: number
   itemsAt: number
   prsAt: number
@@ -17,6 +34,7 @@ declare module 'orca' {
       input: { computer: string; bot: string; offset: number }
       output: { data: string; next: number | null } | null
     }
+    'pr.merge': { input: MergeInput; output: Source<null> }
     'pr.files': {
       input: { key: string; updated: string; offset: number }
       output: Source<{ data: string; end: boolean }>
@@ -25,6 +43,7 @@ declare module 'orca' {
   }
   interface PluginPanelEvents {
     'board.changed': Chunk
+    'merge.progress': Progress
     'board.focus': null
   }
 }

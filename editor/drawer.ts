@@ -1,7 +1,7 @@
 import { el, button, age, labels, notice, prState, external, badge } from './dom'
 import { showFiles } from './diff'
 import { itemKey, prKey, type Item, type MappedPr, type Workspace } from '../src/core/model'
-export function drawers() {
+export function drawers(openMerge: (p: MappedPr) => void) {
   const dialog = el('dialog'),
     body = el('section'),
     close = button('Close', () => dialog.close())
@@ -76,6 +76,10 @@ export function drawers() {
       el('h2', p.title),
       el('mark', prState(p)),
       el('p', '+' + p.additions + ' −' + p.deletions + ' · ' + p.files + ' files'),
+      button('Merge', () => {
+        dialog.close()
+        openMerge(p)
+      }),
       external('Files on GitHub', p.url + '/files'),
       external('Conversation on GitHub', p.url),
     )

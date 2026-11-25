@@ -2,12 +2,26 @@ import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot } from '../protocol'
 import { prKey } from '../core/model'
 import { computers } from './sources/orca'
-import { github, files } from './sources/github'
+import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '../core/merge'
+import { github, files, mergePr } from './sources/github'
 import { openBoard } from './board-file'
 import { avatar } from './avatars'
 import { jump } from './jump'
 export function activate(orca: OrcaWorkerApi) {
-  const data: Snapshot = { computers: [], prs: [], total: 0, itemsAt: 0, prsAt: 0, error: null, focus: false }
+  const data: Snapshot = {
+    computers: [],
+    prs: [],
+    repos: {},
+    merged: [],
+    mergedError: null,
+    total: 0,
+    itemsAt: 0,
+    prsAt: 0,
+    error: null,
+    focus: false,
+  }
+  const landed = new Map<string, MergedPr>()
+  const merging = new Set<string>()
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
   const fileCache = new Map<string, string>()
   function publish(panel?: string) {
@@ -55,7 +69,13 @@ export function activate(orca: OrcaWorkerApi) {
     return (prJob ??= (async () => {
       const result = await github(await path('ghPath'))
       if (result.ok) {
-        data.prs = result.value.prs
+        for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
+        data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
+        data.repos = result.value.repos
+        const merged = result.value.merged
+        data.mergedError = merged.ok ? null : merged
+        const history = merged.ok ? merged.value : data.merged
+        data.merged = mergedToday([...landed.values(), ...history.filter((pr) => !landed.has(prKey(pr)))])
         data.total = result.value.total
         data.prsAt = Date.now()
         data.error = null
@@ -90,6 +110,69 @@ export function activate(orca: OrcaWorkerApi) {
     )
   })
   orca.panels.handle('board.jump', async (input) => jump(orca, data.computers, await path('orcaPath'), input))
+  orca.panels.handle('pr.merge', async (input, context) => {
+    const key = prKey(input),
+      pr = data.prs.find((p) => prKey(p) === key),
+      repo = data.repos[input.repo]
+    if (
+      !pr ||
+      !input.sha ||
+      input.updated !== pr.updated ||
+      input.sha !== pr.sha ||
+      !repo?.ok ||
+      data.error ||
+      merging.has(key)
+    )
+      return {
+        ok: false as const,
+        command: 'Merge',
+        message: 'Pull request unavailable, changed or already merging.',
+        next: 'Refresh the board and reopen the confirmation.',
+      }
+    const assessment = assessMerge(pr, repo.value)
+    if (!assessment.canMerge || !assessment.methods.includes(input.method))
+      return {
+        ok: false as const,
+        command: 'Merge',
+        message: assessment.blockers.join(' ') || 'Method unavailable.',
+        next: 'Refresh and check the repository settings.',
+      }
+    merging.add(key)
+    try {
+      const result = await mergePr(
+        await path('ghPath'),
+        pr,
+        input,
+        (e) => orca.panels.post('merge.progress', e, { panel: context.panel.id }),
+        () => {
+          pr.draft = false
+          publish()
+        },
+      )
+      if (result.ok) {
+        const row = {
+          repo: pr.repo,
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          mergedAt: new Date().toISOString(),
+          notification: manualBotNotification,
+        }
+        landed.set(key, row)
+        data.merged = [row, ...data.merged.filter((p) => prKey(p) !== key)]
+        data.prs = data.prs.filter((p) => prKey(p) !== key)
+        data.total = Math.max(0, data.total - 1)
+        publish()
+      }
+      return result
+    } finally {
+      merging.delete(key)
+      void (async () => {
+        await prJob
+        await refreshPrs()
+      })().catch(report)
+    }
+  })
   orca.panels.handle('pr.files', async (input) => {
     const pr = data.prs.find((p) => prKey(p) === input.key && p.updated === input.updated),
       key = input.key + '@' + input.updated

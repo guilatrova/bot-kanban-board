@@ -48,6 +48,7 @@ export const labels = {
   in_progress: 'In progress',
   waiting: 'Waiting',
   prs: 'Pull requests',
+  merged: 'Merged',
 }
 export function prState(pr: { draft: boolean; mergeable: string }) {
   return pr.draft

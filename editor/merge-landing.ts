@@ -20,22 +20,23 @@ export function mergedRow(pr: MergedPr) {
   return node
 }
 export async function land(list: HTMLElement, card: HTMLElement | undefined, row: HTMLElement, commit: () => void) {
-  list.scrollTop = 0
   if (!card || !list.offsetWidth || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    list.scrollTop = 0
     commit()
     return
   }
+  list.scrollTo({ top: 0, behavior: 'smooth' })
   const css = getComputedStyle(list),
     width = list.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)
   const probe = row.cloneNode(true) as HTMLElement
   Object.assign(probe.style, { position: 'absolute', visibility: 'hidden', width: width + 'px' })
   list.append(probe)
-  const height = probe.offsetHeight
+  const height = probe.getBoundingClientRect().height
   probe.remove()
   const slot = el('div', '', 'slot')
   list.prepend(slot)
   const from = card.getBoundingClientRect(),
-    to = slot.getBoundingClientRect()
+    to = list.getBoundingClientRect()
   const copy = el('div', '', 'morph')
   copy.append(el('div', row.querySelector('h3')!.textContent ?? '', 't'))
   Object.assign(copy.style, {
@@ -51,14 +52,15 @@ export async function land(list: HTMLElement, card: HTMLElement | undefined, row
   Object.assign(card.style, { height: '0px', paddingBlock: '0px', marginBlock: '0px', borderWidth: '0px' })
   slot.style.height = height + 'px'
   Object.assign(copy.style, {
-    top: to.top + 'px',
-    left: to.left + 'px',
+    top: to.top + list.clientTop + parseFloat(css.paddingTop) + 'px',
+    left: to.left + list.clientLeft + parseFloat(css.paddingLeft) + 'px',
     width: width + 'px',
     height: height + 'px',
     background: 'var(--morph-bg)',
     borderColor: 'var(--run)',
   })
   await new Promise((resolve) => setTimeout(resolve, 550))
+  list.scrollTop = 0
   copy.remove()
   slot.replaceWith(row)
   card.remove()

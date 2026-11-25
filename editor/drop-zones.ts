@@ -15,7 +15,7 @@ export function dropZones(
   function dragTarget(key: 'merged' | 'closed', on: boolean) {
     const col = columns.get(key)
     if (!on) col?.lane.querySelector('.over')?.classList.remove('over')
-    col?.expandForDrag(on)
+    col?.expandForDrag(on || (key === 'merged' && panel.classList.contains('on')))
     col?.lane.classList.toggle('target', on)
   }
   function resetDrag() {

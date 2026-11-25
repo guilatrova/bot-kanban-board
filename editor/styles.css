@@ -1663,7 +1663,7 @@ article.gone {
     transform: rotate(360deg);
   }
 }
-.dot {
+.qrow .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;

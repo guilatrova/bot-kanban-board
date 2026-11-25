@@ -115,3 +115,10 @@ export function badge(computer: string, bot: string) {
   })
   return span
 }
+
+export function patch(parent: HTMLElement, children: HTMLElement[]) {
+  for (const [index, node] of children.entries()) {
+    if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] ?? null)
+  }
+  while (parent.children.length > children.length) parent.lastElementChild?.remove()
+}

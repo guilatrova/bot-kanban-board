@@ -45,6 +45,7 @@ export function mergeQueue(
       timer = setTimeout(() => {
         panel.classList.remove('on')
         merged = 0
+        changed()
       }, 1400)
   }
   function entry(pr: MappedPr) {
@@ -181,8 +182,8 @@ export function mergeQueue(
       clearTimeout(timer)
       if (!failed.size) merged = 0
       busy = true
-      changed()
       panel.classList.add('on')
+      changed()
       heading.textContent = 'Merging ' + batch.length + ' pull request' + (batch.length === 1 ? '' : 's')
       const entries = batch.map(entry),
         results: MergeResult[] = []

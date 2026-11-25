@@ -10,7 +10,7 @@ import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, badge, prPill, describeFailure, notice, labels } from './dom'
+import { patch, el, button, age, badge, prPill, describeFailure, notice, labels } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
@@ -120,6 +120,8 @@ export function view(
         prs: data.prs.filter((p) => !landed.has(prKey(p))),
         merged: [...landed.values(), ...data.merged],
       }
+    const mergedColumn = columns.get('merged')!
+    mergedColumn.expandForDrag(queue.panel.classList.contains('on') || mergedColumn.lane.classList.contains('target'))
     select.go.disabled = queue.busy
     actions.reconcile(
       data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
@@ -285,12 +287,6 @@ export function view(
         }
       }
       return node
-    }
-    function patch(parent: HTMLElement, children: HTMLElement[]) {
-      for (const [index, node] of children.entries()) {
-        if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] ?? null)
-      }
-      while (parent.children.length > children.length) parent.lastElementChild?.remove()
     }
     for (const [key, col] of columns) {
       const { list } = col

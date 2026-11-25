@@ -1324,3 +1324,51 @@ article.merging {
   color: var(--fg);
   background: var(--card);
 }
+:root {
+  --thumb: #ffffff26;
+  --thumb-hover: #ffffff4d;
+}
+html.light {
+  --thumb: #00000026;
+  --thumb-hover: #0000004d;
+}
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) {
+    --thumb: #00000026;
+    --thumb-hover: #0000004d;
+  }
+}
+.scroll-area {
+  overflow-x: hidden;
+}
+.scroll-area.more-below {
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+}
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+  height: 0;
+}
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-area::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+.scroll-area:hover::-webkit-scrollbar-thumb {
+  background-color: var(--thumb);
+}
+.scroll-area:hover::-webkit-scrollbar-thumb:hover {
+  background-color: var(--thumb-hover);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-area {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scroll-area:hover {
+    scrollbar-color: var(--thumb) transparent;
+  }
+}

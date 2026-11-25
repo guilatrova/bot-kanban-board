@@ -4,7 +4,8 @@ import { prKey, type PullRequest, type Source } from '../../core/model'
 import { runCli } from '../cli'
 import { obj, rows, str, num, pullRequest, fileChange } from '../../core/normalize'
 import { reader, source } from './read'
-export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}} }}}}`
+const pullFields = `number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}}`
+export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ ${pullFields} }}}}`
 export function github(path: string) {
   const read = reader('gh', path)
   return source('gh api graphql', async () => {
@@ -152,4 +153,34 @@ export async function mergePr(
     progress({ key, step, state: 'done' })
   }
   return { ok: true, value: null }
+}
+
+export function readPull(path: string, input: { repo: string; number: number }) {
+  const [owner, name] = input.repo.split('/')
+  return reader('gh', path)(
+    [
+      'api',
+      'graphql',
+      '-f',
+      'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){state mergedAt ' +
+        pullFields +
+        '}}}',
+      '-f',
+      'owner=' + owner,
+      '-f',
+      'name=' + name,
+      '-F',
+      'number=' + input.number,
+    ],
+    (value) => {
+      const pr = obj(obj(obj(obj(value).data).repository).pullRequest)
+      if (pr.state === 'MERGED')
+        return {
+          merged: true as const,
+          row: { ...input, title: str(pr, 'title'), url: str(pr, 'url'), mergedAt: str(pr, 'mergedAt') },
+        }
+      if (pr.state !== 'OPEN') throw Error('Pull request is no longer open.')
+      return { merged: false as const, pr: pullRequest(pr) }
+    },
+  )
 }

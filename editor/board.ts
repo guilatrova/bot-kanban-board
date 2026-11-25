@@ -1,3 +1,4 @@
+import { readMergeSettings } from './settings'
 import { readViews } from './views'
 import { readActions } from './item-actions'
 import { view } from './render'
@@ -12,34 +13,56 @@ async function start() {
     await initialRead
     return latest.computers.flatMap((c) => (c.source.ok ? c.source.value.bots : []))
   }
-  let chunks: string[] = []
-  orca.plugin.on('board.changed', (chunk) => {
-    if (chunk.index === 0) chunks = []
-    chunks[chunk.index] = chunk.data
-    if (chunk.index === chunk.count - 1) {
-      const data = JSON.parse(chunks.join('')) as Snapshot
-      latest = data
-      board ??= Promise.all([
-        readViews(Boolean(data.demo), roster),
-        readActions(Boolean(data.demo)),
-        orca.storage.get('collapsed'),
-      ]).then(([saved, actions, collapsed]) => {
-        loading.remove()
-        return view(
-          saved,
-          actions,
-          new Set<string>(
-            Array.isArray(collapsed)
-              ? collapsed.filter((k): k is string => typeof k === 'string')
-              : ['waiting', 'closed'],
-          ),
-        )
-      })
-      void board.then((b) => b.draw(data)).catch(notice)
+  async function read(fresh = false) {
+    const chunks: string[] = []
+    for (let index = 0; ; index++) {
+      const chunk = await orca.plugin.request('board.get', { index, fresh }, { timeoutMs: 120000 })
+      chunks.push(chunk.data)
+      if (index + 1 === chunk.count) break
+    }
+    const data = JSON.parse(chunks.join('')) as Snapshot
+    latest = data
+    board ??= Promise.all([
+      readViews(Boolean(data.demo), roster),
+      readMergeSettings(Boolean(data.demo)),
+      readActions(Boolean(data.demo)),
+      orca.storage.get('collapsed'),
+    ]).then(([saved, mergeSettings, actions, collapsed]) => {
+      loading.remove()
+      return view(
+        saved,
+        mergeSettings,
+        actions,
+        new Set<string>(
+          Array.isArray(collapsed)
+            ? collapsed.filter((k): k is string => typeof k === 'string')
+            : ['waiting', 'closed'],
+        ),
+      )
+    })
+    void board.then((b) => b.draw(data)).catch(notice)
+  }
+  let dirty = false
+  let reading = true
+  async function drain() {
+    try {
+      while (dirty) {
+        dirty = false
+        await read()
+      }
+    } finally {
+      reading = false
+    }
+  }
+  orca.plugin.on('board.changed', () => {
+    dirty = true
+    if (!reading) {
+      reading = true
+      void drain().catch(notice)
     }
   })
   orca.plugin.on('board.focus', () => void board?.then((b) => b.focus()))
-  const initialRead = orca.plugin.request('board.get', undefined, { timeoutMs: 120000 })
+  const initialRead = read(true).finally(drain)
   await initialRead
 }
 void start().catch((e) => notice(String(e) + ' · Reopen the board to retry.'))

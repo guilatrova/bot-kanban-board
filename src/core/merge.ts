@@ -3,6 +3,41 @@ import type { PullRequest, IssueRef } from './model'
 export const manualBotNotification = 'The bot was not told; tell it in Orca'
 export const mergeMethods = ['squash', 'merge', 'rebase'] as const
 export type MergeMethod = (typeof mergeMethods)[number]
+export const methodLabels = { squash: 'Squash', merge: 'Merge commit', rebase: 'Rebase' }
+export type MergePreferences = {
+  mergeMethod: MergeMethod
+  askBeforeMerging: boolean
+}
+export function checksLabel(checks: string | null) {
+  if (!checks) return 'No checks'
+  if (checks === 'SUCCESS') return 'Checks passed'
+  return ['FAILURE', 'ERROR'].includes(checks) ? 'Checks failed' : 'Checks running'
+}
+export function mergeableLabel(state: string) {
+  if (state === 'MERGEABLE') return 'No conflicts'
+  return state === 'CONFLICTING' ? 'Conflicts' : 'Checking for conflicts'
+}
+export type ConfirmedMerge = {
+  warnings: Warning[]
+  mergeable: string
+  behind?: string
+}
+export function canMergeWithoutDialog(
+  pr: PullRequest & { behind?: string },
+  repo: RepositoryFacts,
+  method: MergeMethod,
+  confirmed?: ConfirmedMerge,
+) {
+  const assessment = assessMerge(pr, repo)
+  return Boolean(
+    pr.sha &&
+      (pr.mergeable === 'MERGEABLE' || pr.mergeable === confirmed?.mergeable) &&
+      (!pr.behind || pr.behind === confirmed?.behind) &&
+      assessment.canMerge &&
+      assessment.warnings.every((w) => confirmed?.warnings.some((previous) => previous.text === w.text)) &&
+      assessment.methods.includes(method),
+  )
+}
 export interface RepositoryFacts {
   defaultBranch: string
   push: boolean
@@ -25,7 +60,7 @@ export function assessMerge(pr: PullRequest, repo: RepositoryFacts) {
   if (pr.base !== repo.defaultBranch)
     warnings.push({ text: 'Targets ' + pr.base + ' instead of ' + repo.defaultBranch + '.' })
   if (!pr.checks) warnings.push({ text: 'No checks ran.' })
-  else if (pr.checks !== 'SUCCESS') warnings.push({ text: 'Checks: ' + pr.checks + '. Review the checks on GitHub.' })
+  else if (pr.checks !== 'SUCCESS') warnings.push({ text: checksLabel(pr.checks) + '. Review the checks on GitHub.' })
   if (pr.additions + pr.deletions >= largeChangeLines)
     warnings.push({ text: 'Very large change. Review the diff before merging.' })
   if (/\b(?:do not merge|don['’]?t merge|not merge|wip|test only)\b|\[no merge\]/i.test(pr.title))

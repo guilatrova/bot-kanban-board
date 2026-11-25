@@ -1,14 +1,25 @@
-# Orca Bots Board
+![Bot Kanban Board](assets/cover.png)
 
-Open **Open bots board** from the Orca command palette to see open Items on this computer and its saved paired computers. Select **Needs you** in the status bar to jump to the oldest outstanding questions. Click a bot to filter, or Alt-click or Cmd-click to show that bot alone.
+# Bot Kanban Board
 
-Item drawers show the question, suggested replies, worker reports and links to related pull requests. **Answer in Orca** opens the bot workspace so you can reply in its chat. Pull request drawers show changed files, expandable diffs and links to GitHub. The board matches pull requests by workspace branch, direct Item reference or closing issue.
+## What it does
 
-Drag a pull request onto **Merge** in the Merged column or select **Merge** in its drawer to review its warnings and allowed methods. Confirming a draft marks it ready before attempting the merge. The Merged column shows today’s merges in local time, newest first. Click a merged card to open it on GitHub. Drop an open pull request onto **Close PR** to close it after confirmation.
+See your bots’ Items across this computer and its paired computers alongside open GitHub pull requests. The board links related work by branch, Item reference or closing issue.
+
+## How to use
+
+- Install **Bot Kanban Board** from Orca’s plugin page. For live data, install the Orca and GitHub CLIs and sign in with `gh auth login`.
+- Click **Needs you** in the status bar or choose **Open Bot Kanban Board** in the command palette. Both open or focus the board at the Needs you column.
+- Orca displays a plugin’s full-page view as the editor for a file type. The plugin creates and opens **Board.botkanban** for you.
+- **Waiting** includes waiting and planned Items. **Needs you** lists questions, oldest first. **In progress** shows active work. **Closed** lists Items completed or cancelled today.
+- **Pull requests** groups ready, draft and unassigned work. Click a card to inspect its files and diff. **Merged** shows today’s merges in local time, newest first. Click a merged card to open it on GitHub.
+- Click a pull request and choose **Merge**, or drag it onto the **Merge** zone in Merged. Confirm the method after reading any warnings. A draft is marked ready first. Follow progress in the toast while you keep working. To close without merging, drop onto **Close PR** and confirm.
+- Open the settings gear to choose a default merge method. Turn off **Ask before merging** to skip confirmation for clean pull requests. Warnings, conflicts, stack dependencies and unavailable methods still open the dialog.
+- Turn on **Demo data** in Orca’s plugin settings and restart the plugin to explore a synthetic board. Demo merges affect only the sample data.
 
 ## Organize the board
 
-Use the bot chips, **Repositories**, and **Needs me only** to filter the board. **Needs me only** includes Items in Needs you and open, non-draft pull requests. Items without a known repository stay visible under repository filters. The board uses a matched PR or a workspace linked to an Item’s worker when it can identify the repository. Merged PRs have no bot assignment and are hidden under bot filters.
+Use the bot chips, **Repositories**, and **Needs me only** to filter the board. **Needs me only** includes Items in Needs you and open, non-draft pull requests. Items without a known repository stay visible under repository filters. The board uses a matched PR or a workspace linked to an Item’s worker when it can identify the repository. Bot chips leave Merged and No bot rows visible. Alt-click or Cmd-click a chip to show just that bot’s assigned work.
 
 Open the filter menu to see saved views, filters, snoozed Items and computer status. Select **View** to save the current filters, switch views, rename a saved view or delete it. The board restores your last selection when you reopen it.
 
@@ -26,7 +37,7 @@ Select an open card’s bell to receive one notification when its Item changes s
 
 Use Orca desktop 1.4.274 or later on macOS or Linux. Install the Orca CLI and GitHub CLI, then sign in with `gh auth login`. From a local checkout, run `orca plugin install . --json` (or `orca plugin dev load . --json` for development). Review the requested permissions and follow the approval command Orca prints. Open the board from your own desktop session.
 
-## Access
+## What it reads and where it sends it
 
 The trusted worker runs Node.js with your account’s access. Live mode invokes the Orca and GitHub CLIs, reads available bot avatars on their owning computers and maintains a board file in the application data directory.
 
@@ -61,6 +72,16 @@ The trusted worker runs Node.js with your account’s access. Live mode invokes 
 - Orca opens a bot's workspace. Select the original chat there to answer. The bot deep link is a fallback when the folder workspace cannot be opened.
 - Desktop operation and paired-computer jumps still need an end-to-end run on a Mac. The CLI runner detects inherited bot-session context and directs the operator to open the board from the desktop as themselves.
 
-## Development
+## How it is built
+
+`src/core/` owns board grouping, PR matching, stack order and merge assessment. The worker in `src/worker/` reads Orca and GitHub and sends requested actions to their respective services. The editor in `editor/` renders snapshots and stores preferences in Orca plugin storage.
+
+## Develop
 
 Install the pinned pnpm version and run `pnpm install --frozen-lockfile`. Generate host declarations with `orca plugin types . --json`, or use `bash scripts/host-types.sh` on headless machines without the bundled declarations. Run `pnpm check` for formatting, strict type checks, lint and core unit tests. The plugin loads its TypeScript directly. The synthetic demo entry is `editor/demo.html` and can be served by a TypeScript-aware development server.
+
+Serve the demo with `pnpm exec vite` if Vite is installed, then open `/editor/demo.html`. Append `?state=failure` to simulate one failed merge and try Retry.
+
+## Credits
+
+Created by [Guilherme Latrova](https://github.com/guilatrova). The board uses Geist fonts under the [SIL Open Font License](editor/fonts/OFL.txt).

@@ -27,13 +27,14 @@ export function popover(anchor: HTMLElement, submenu = false) {
     const buttons = [...node.querySelectorAll('button')]
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
     if (e.key === 'Escape' || (submenu && e.key === 'ArrowLeft')) close(true)
+    else if (e.target instanceof HTMLSelectElement) return
     else if (['ArrowDown', 'ArrowUp'].includes(e.key))
       buttons[(index + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus()
     else return
     e.preventDefault()
     e.stopPropagation()
   }
-  const position = () => {
+  const position = (focus = true) => {
     const rect = anchor.getBoundingClientRect()
     const x = submenu
       ? rect.right + node.offsetWidth + 4 <= innerWidth
@@ -43,7 +44,7 @@ export function popover(anchor: HTMLElement, submenu = false) {
     node.style.left = Math.max(4, Math.min(x, innerWidth - node.offsetWidth - 4)) + 'px'
     node.style.top =
       Math.max(4, Math.min(submenu ? rect.top - 5 : rect.bottom + 4, innerHeight - node.offsetHeight - 4)) + 'px'
-    node.querySelector('button')?.focus()
+    if (focus) node.querySelector('button')?.focus()
   }
   return { node, close, position }
 }

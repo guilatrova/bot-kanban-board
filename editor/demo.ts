@@ -1,14 +1,16 @@
+import { stackOrder } from '../src/core/stacks'
 import type { Bell } from '../src/core/bells'
 import { prKey } from '../src/core/model'
 import { manualBotNotification } from '../src/core/merge'
-import { demoBoard } from '../src/demo'
+import { demoBoard, demoMerge } from '../src/demo'
 import type { OrcaFrameApi } from 'orca/frame'
 const state = new URLSearchParams(location.search).get('state')
 const data = demoBoard(state)
 data.bells = JSON.parse(sessionStorage.getItem('demo-bells') || '[]') as Bell[]
 data.notificationsOff = state === 'notifications-off'
 const handlers = new Map<string, (v: unknown) => void>()
-const send = () => handlers.get('board.changed')?.({ index: 0, count: 1, data: JSON.stringify(data) })
+let failNext = state === 'failure'
+const send = () => handlers.get('board.changed')?.(null)
 const fake = {
   storage: {
     get: (k: string) => JSON.parse(sessionStorage.getItem(k) || 'null') as unknown,
@@ -17,7 +19,13 @@ const fake = {
   plugin: {
     on: (k: string, fn: (v: unknown) => void) => handlers.set(k, fn),
     request: async (k: string, input?: { repo: string; number: number; bell: Bell; on: boolean }) => {
-      if (k === 'board.get' || k === 'board.refresh') {
+      if (k === 'board.get' && state === 'loading') return new Promise(() => {})
+      if (k === 'board.get') return { index: 0, count: 1, data: JSON.stringify(data) }
+      if (k === 'pr.read' && input) {
+        const pr = stackOrder(data.prs).find((p) => prKey(p) === prKey(input))
+        return pr ? { merged: false, pr, facts: data.repos[pr.repo] } : { merged: true }
+      }
+      if (k === 'board.refresh') {
         if (state !== 'loading') send()
         return null
       }
@@ -36,22 +44,17 @@ const fake = {
       }
       if (k === 'pr.merge' && input) {
         const row = data.prs.find((p) => p.repo === input.repo && p.number === input.number)!
-        const key = prKey(row)
-        for (const step of row.draft ? ['ready', 'merge'] : ['merge']) {
-          handlers.get('merge.progress')?.({ key, step, state: 'running' })
-          await new Promise((resolve) => setTimeout(resolve, 900))
-          if (state === 'failure' && step === 'merge') {
-            handlers.get('merge.progress')?.({ key, step, state: 'failed' })
-            return {
-              ok: false,
-              command: 'gh api',
-              message: 'Required status check "field survey" is pending.',
-              next: 'Wait for the check and merge it on GitHub.',
-            }
-          }
-          if (step === 'ready') row.draft = false
-          handlers.get('merge.progress')?.({ key, step, state: 'done' })
-        }
+        const fail = failNext
+        failNext = false
+        const result = await demoMerge(
+          row,
+          (e) => handlers.get('merge.progress')?.(e),
+          () => {
+            row.draft = false
+          },
+          fail,
+        )
+        if (!result.ok) return result
         data.merged.unshift({
           ...row,
           mergedAt: new Date().toISOString(),

@@ -49,7 +49,9 @@ describe('merge assessment', () => {
       expect.stringMatching(/large/),
     ])
     for (const checks of ['PENDING', 'FAILURE'])
-      expect(assessMerge({ ...pr, checks }, repo).warnings[0]?.text).toContain(checks)
+      expect(assessMerge({ ...pr, checks }, repo).warnings[0]?.text).toContain(
+        checks === 'PENDING' ? 'Checks running' : 'Checks failed',
+      )
   })
   it.each(['do not merge', 'don\x27t merge', 'dont merge', 'not merge', 'WIP', 'Test Only', '[NO MERGE]'])(
     'flags %s',

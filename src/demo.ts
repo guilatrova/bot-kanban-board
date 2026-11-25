@@ -1,5 +1,6 @@
 import { items, bots, pullRequest } from './core/normalize'
-import type { Snapshot } from './protocol'
+import { prKey, type PullRequest, type Source } from './core/model'
+import type { Progress, Snapshot } from './protocol'
 export function demoBoard(state: string | null = null) {
   const list = bots(
     {
@@ -73,8 +74,9 @@ export function demoBoard(state: string | null = null) {
     commits: { nodes: [] },
   })
   pr.title = 'Add collection markers to the field map'
+  pr.checks = 'SUCCESS'
   pr.sha = 'a'.repeat(40)
-  if (['warnings', 'danger', 'failure', 'progress'].includes(state || '')) {
+  if (['warnings', 'danger', 'progress'].includes(state || '')) {
     pr.draft = true
     pr.checks = null
     pr.base = 'spring-survey'
@@ -124,6 +126,35 @@ export function demoBoard(state: string | null = null) {
     error: null,
     focus: false,
   }
+  if (state !== 'empty') {
+    for (const [number, title] of [
+      'Record the summer survey',
+      'Import historical readings',
+      'Resolve survey boundaries',
+    ].entries()) {
+      const n = number + 3
+      data.prs.push({
+        ...pr,
+        number: n,
+        title,
+        head: 'survey-' + n,
+        base: 'main',
+        url: pr.url.replace(/1$/, String(n)),
+        checks: n === 4 ? null : 'SUCCESS',
+        additions: n === 4 ? 5012 : 5,
+        mergeable: n === 5 ? 'CONFLICTING' : 'MERGEABLE',
+        draft: false,
+      })
+    }
+    data.total = data.prs.length
+    data.merged.push({
+      ...pr,
+      number: 6,
+      title: 'Publish spring observations',
+      url: pr.url.replace(/1$/, '6'),
+      mergedAt: new Date().toISOString(),
+    })
+  }
   if (state === 'paired' || state === 'bot-warning') {
     const station = data.computers[0]!
     station.key = 'field-station'
@@ -166,4 +197,22 @@ export function demoBoard(state: string | null = null) {
     }
   }
   return data
+}
+
+export async function demoMerge(
+  pr: PullRequest,
+  progress: (event: Progress) => void,
+  onReady: () => void,
+  fail: boolean,
+): Promise<Source<null>> {
+  const key = prKey(pr)
+  for (const step of pr.draft ? (['ready', 'merge'] as const) : (['merge'] as const)) {
+    progress({ key, step, state: 'running' })
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    if (step === 'merge' && fail)
+      return { ok: false, command: 'Demo', message: 'Required status check "field survey" is pending.', next: '' }
+    if (step === 'ready') onReady()
+    progress({ key, step, state: 'done' })
+  }
+  return { ok: true, value: null }
 }

@@ -27,12 +27,19 @@ export interface Snapshot {
   itemsAt: number
   prsAt: number
   error: Failure | null
+  running?: string[]
   focus: boolean
 }
 export type Chunk = { index: number; count: number; data: string }
 declare module 'orca' {
   interface PluginRequests {
-    'board.get': { input: undefined; output: null }
+    'board.get': { input: { index: number; fresh?: boolean }; output: Chunk }
+    'pr.read': {
+      input: { repo: string; number: number }
+      output:
+        | { merged: true }
+        | { merged: false; pr: PullRequest & { behind?: string }; facts: Source<RepositoryFacts> }
+    }
     'board.refresh': { input: undefined; output: null }
     'avatar.get': {
       input: { computer: string; bot: string; offset: number }
@@ -48,7 +55,7 @@ declare module 'orca' {
     'board.jump': { input: { computer: string; bot: string; number?: number; workspace?: string }; output: string }
   }
   interface PluginPanelEvents {
-    'board.changed': Chunk
+    'board.changed': null
     'merge.progress': Progress
     'board.focus': null
   }

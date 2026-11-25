@@ -2,7 +2,7 @@
 
 Run these steps when the repository owner chooses to publish.
 
-1. Set `version` in `orca-plugin.json`. Run `pnpm check`, `orca plugin validate . --json` and `orca plugin inspect . --json`. Check the reported version, entry points and permissions.
+1. Set `version` in `orca-plugin.json`. Run `pnpm check`, `orca plugin validate . --json` and `orca plugin inspect . --json`. Inspect a clean checkout or a `git archive HEAD` extraction so local dependency symlinks are excluded from the plugin contents. Check the reported version, entry points and permissions.
 2. Commit the validated files and push to the public GitHub repository that will own the plugin. Its repository owner becomes the publisher.
 3. Tag that commit with the manifest version, for example `git tag -a v1.2.0 -m v1.2.0` and `git push origin v1.2.0`.
 4. Add the discovery topic with `gh repo edit <owner>/<repo> --add-topic orca-plugin`. Check the listing at `https://www.onorca.dev/plugins/<owner>/<repo>`.

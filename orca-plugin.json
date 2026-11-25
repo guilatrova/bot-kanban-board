@@ -1,9 +1,15 @@
 {
   "manifestVersion": 2,
-  "id": "bots-board",
-  "name": "Bots board",
+  "id": "bot-kanban-board",
+  "name": "Bot Kanban Board",
   "version": "0.1.0",
-  "description": "Open Items and pull requests across your Orca computers.",
+  "publisher": "guilatrova",
+  "license": "MIT",
+  "description": "See every Orca bot's open Items and pull requests on one board, answer what needs you, and merge in one click.",
+  "cover": {
+    "path": "assets/cover.png",
+    "alt": "All your bots, one board. Bot Kanban Board showing Needs you, In progress and pull requests ready to merge."
+  },
   "execution": "trusted-worker",
   "pluginApi": 1,
   "main": "src/worker/index.ts",
@@ -12,18 +18,18 @@
     "customEditors": [
       {
         "id": "board",
-        "title": "Bots board",
-        "extensions": [".botsboard"],
+        "title": "Bot Kanban Board",
+        "extensions": [".botkanban"],
         "entry": "editor/board.html",
         "frame": "isolated"
       }
     ],
     "commands": [
-      { "id": "bots-board.open", "title": "Open bots board" },
-      { "id": "bots-board.needs-you", "title": "Show Needs you" }
+      { "id": "bot-kanban-board.open", "title": "Open Bot Kanban Board" },
+      { "id": "bot-kanban-board.needs-you", "title": "Show Needs you" }
     ],
     "statusBarItems": [
-      { "id": "needs-you", "text": "Needs you \u2026", "icon": "bell", "command": "bots-board.needs-you" }
+      { "id": "needs-you", "text": "Needs you \u2026", "icon": "bell", "command": "bot-kanban-board.needs-you" }
     ],
     "events": [{ "on": "agent.status.changed" }],
     "settings": [

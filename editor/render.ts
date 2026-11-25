@@ -1,3 +1,7 @@
+import { mergeToasts } from './merge-toasts'
+import { settings, type readMergeSettings } from './settings'
+import { canMergeWithoutDialog, checksLabel } from '../src/core/merge'
+import { countLabel } from './pr-labels'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
@@ -13,6 +17,7 @@ import { type readViews } from './views'
 import { itemActions, type readActions } from './item-actions'
 export function view(
   saved: Awaited<ReturnType<typeof readViews>>,
+  { prefs, save }: Awaited<ReturnType<typeof readMergeSettings>>,
   store: Awaited<ReturnType<typeof readActions>>,
   collapsed: Set<string>,
 ) {
@@ -27,10 +32,20 @@ export function view(
   const actions = itemActions(store, redraw)
   let sleeping: Item[] = []
   const snoozed = button('Snoozed 0', () => actions.showList(sleeping), 'chip')
-  const header = boardHeader(saved, update, snoozed)
+  const header = boardHeader(saved, update, snoozed, settings(prefs, save))
   const { lanes } = header
-  const confirm = mergeDialog()
-  const openMerge = (pr: MappedPr) => confirm(pr, snapshot?.error || snapshot?.repos[pr.repo])
+  const confirm = mergeDialog(
+    prefs,
+    save,
+    (pr, method, warnings) => void merges.start(pr, method, { warnings, mergeable: pr.mergeable, behind: pr.behind }),
+  )
+  const merges = mergeToasts(redraw, (pr, facts) => confirm(pr, facts))
+  const openMerge = (pr: MappedPr) => {
+    const facts = snapshot?.error || snapshot?.repos[pr.repo]
+    if (!prefs.askBeforeMerging && facts?.ok && canMergeWithoutDialog(pr, facts.value, prefs.mergeMethod))
+      void merges.start(pr, prefs.mergeMethod)
+    else confirm(pr, facts)
+  }
   const drawer = drawers(openMerge, actions.selector)
   let dragging: MappedPr | null = null
   let draggedItem: Item | null = null
@@ -138,8 +153,12 @@ export function view(
       }
       const element = node
       const links = isItem ? prs.filter((p) => p.items.some((i) => itemKey(i) === key)) : row.items
+      const merging = !isItem && (merges.running(key) || !!data.running?.includes(key))
+      node.inert = merging
+      node.classList.toggle('merging', merging)
       const signature = JSON.stringify([
         row,
+        merging,
         ringing,
         data.notificationsOff,
         links.map((l) => ('status' in l ? itemKey(l) : prKey(l))),
@@ -236,10 +255,10 @@ export function view(
           if (row.chat) node.append(el('small', row.chat))
         } else
           node.append(
-            prPill(row),
+            merging ? el('mark', 'Merging…', 'ready') : prPill(row),
             el(
               'small',
-              ['+' + row.additions + ' −' + row.deletions, row.files + ' files', row.checks]
+              ['+' + row.additions + ' −' + row.deletions, countLabel(row.files, 'file'), checksLabel(row.checks)]
                 .filter(Boolean)
                 .join(' · '),
             ),
@@ -333,7 +352,10 @@ export function view(
         signatures.delete(key)
       }
     animate(alive)
-    if (data.focus) focus()
+    if (data.focus) {
+      focus()
+      data.focus = false
+    }
   }
   return { draw, focus }
 }

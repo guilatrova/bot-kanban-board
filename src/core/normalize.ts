@@ -1,4 +1,6 @@
 import {
+  isClosed,
+  itemKey,
   statuses,
   type Bot,
   type Computer,
@@ -9,6 +11,7 @@ import {
   type PullRequest,
   type FileChange,
 } from './model'
+import { isToday } from './merge'
 export function obj(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Expected an object')
   return value as Record<string, unknown>
@@ -110,13 +113,21 @@ function worker(w: Record<string, unknown>): Worker {
 export function workers(data: unknown) {
   return rows(obj(data).items).map(obj).map(worker)
 }
-export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
+export function items(data: unknown, bot: Bot, live: Worker[], watched = new Set<string>()): Item[] {
   return rows(obj(data).items)
     .map(obj)
     .flatMap((i) => {
       const status = str(i, 'status')
-      if (['done', 'canceled'].includes(status)) return []
-      if (!statuses.includes(status as Status)) throw Error('Unknown Item status')
+      const closed = isClosed(status)
+      const timestamp = closed ? (i.closedAt ?? i.updatedAt ?? i.lastActivityAt) : i.lastActivityAt
+      const updated = typeof timestamp === 'number' ? timestamp : Date.parse(String(timestamp))
+      if (
+        closed &&
+        !isToday(new Date(updated)) &&
+        !watched.has(itemKey({ ...bot, bot: bot.name, number: Number(i.number) }))
+      )
+        return []
+      if (!closed && !statuses.some((s) => s === status)) throw Error('Unknown Item status')
       const q = nested(i.question),
         chat = nested(i.chat),
         links = rows(i.links ?? []).map(obj)
@@ -137,7 +148,7 @@ export function items(data: unknown, bot: Bot, live: Worker[]): Item[] {
           status: status as Status,
           snoozedUntil:
             typeof i.snoozedUntil === 'number' ? i.snoozedUntil : Date.parse(opt(i.snoozedUntil) ?? '') || undefined,
-          updated: num(i, 'lastActivityAt'),
+          updated: closed ? updated : num(i, 'lastActivityAt'),
           chat: opt(chat.title),
           chatId: opt(chat.id),
           description: opt(i.description),

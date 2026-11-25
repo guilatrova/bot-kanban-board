@@ -1,7 +1,10 @@
 export type Failure = { ok: false; command: string; message: string; next: string }
 export type Source<T> = { ok: true; value: T } | Failure
 export const statuses = ['planned', 'needs_you', 'in_progress', 'waiting'] as const
-export type Status = (typeof statuses)[number]
+export type Status = (typeof statuses)[number] | 'done' | 'canceled'
+export const itemLanes = ['waiting', 'needs_you', 'in_progress', 'closed'] as const
+export const isClosed = (status: string) => status === 'done' || status === 'canceled'
+export const itemLane = (status: Status) => (isClosed(status) ? 'closed' : status === 'planned' ? 'waiting' : status)
 export interface Bot {
   computer: string
   id: string

@@ -6,6 +6,7 @@ import { manualBotNotification, assessMerge, mergedToday, type MergedPr } from '
 import { github, files, mergePr, closePr } from './sources/github'
 import { openBoard } from './board-file'
 import { avatars } from './avatars'
+import { notifications } from './bells'
 import { jump } from './jump'
 import { demoBoard } from '../demo'
 import { parseActions, moveState } from '../core/actions'
@@ -42,6 +43,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         panel ? { panel } : undefined,
       )
   }
+  const evaluateBells = await notifications(orca, data, publish)
   let itemJob: Promise<void> | null = null,
     prJob: Promise<void> | null = null
   function refreshItems() {
@@ -56,6 +58,7 @@ export default async function activate(orca: OrcaWorkerApi) {
           )
           .map(([key]) => key),
       )
+      for (const bell of data.bells ?? []) if (bell.kind === 'item') closing.add(bell.id)
       data.computers = await computers(await path('orcaPath'), closing, (computer) => {
         const position = data.computers.findIndex((previous) => previous.key === computer.key)
         if (position < 0) data.computers.push(computer)
@@ -65,6 +68,10 @@ export default async function activate(orca: OrcaWorkerApi) {
       })
       data.itemsAt = Date.now()
       publish()
+      await evaluateBells(
+        data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
+        [],
+      )
       await avatar.prune(data.computers)
       const n = data.computers
         .flatMap((c) => (c.source.ok ? c.source.value.items : []))
@@ -97,6 +104,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         data.total = result.value.total
         data.prsAt = Date.now()
         data.error = null
+        await evaluateBells([], data.prs)
         const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
         for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
       } else data.error = result

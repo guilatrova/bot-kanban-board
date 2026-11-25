@@ -55,29 +55,18 @@ export async function computers(
               live = await read(['bot', 'work', 'list', ...args], workers),
               all: Item[] = []
             let cursor: string | null = null
-            const includeClosed = [...closing].some((k) =>
-              k.startsWith(JSON.stringify([target.key, bot.name]).slice(0, -1) + ','),
-            )
+
             const seen = new Set<string>()
             do {
               const page: { items: Item[]; next: unknown } = await read(
-                [
-                  'bot',
-                  'item',
-                  'list',
-                  ...(includeClosed ? ['--all'] : []),
-                  ...args,
-                  ...(cursor ? ['--cursor', cursor] : []),
-                ],
+                ['bot', 'item', 'list', '--all', ...args, ...(cursor ? ['--cursor', cursor] : [])],
                 (v) => {
-                  if (includeClosed)
-                    for (const row of rows(obj(v).items).map(obj)) {
-                      if (typeof row.number !== 'number' || (row.status !== 'done' && row.status !== 'canceled'))
-                        continue
-                      const key = itemKey({ computer: target.key, bot: bot.name, number: row.number })
-                      if (closing.has(key)) closed[key] = row.status
-                    }
-                  return { items: items(v, bot, live), next: obj(v).nextCursor }
+                  for (const row of rows(obj(v).items).map(obj)) {
+                    if (typeof row.number !== 'number' || (row.status !== 'done' && row.status !== 'canceled')) continue
+                    const key = itemKey({ computer: target.key, bot: bot.name, number: row.number })
+                    if (closing.has(key)) closed[key] = row.status
+                  }
+                  return { items: items(v, bot, live, closing), next: obj(v).nextCursor }
                 },
               )
               all.push(...page.items)

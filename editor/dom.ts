@@ -43,6 +43,9 @@ export const age = (time: number | string) => {
         : Math.floor(minutes / 1440) + 'd ago'
 }
 export const labels = {
+  closed: 'Closed',
+  done: 'Completed',
+  canceled: 'Cancelled',
   planned: 'Planned',
   needs_you: 'Needs you',
   in_progress: 'In progress',

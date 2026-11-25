@@ -1,5 +1,5 @@
 import { buildBoard, toggleBot } from '../src/core/board'
-import { botKey, itemKey, prKey, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
+import { botKey, itemKey, prKey, itemLanes, statuses, type Status, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
 import { el, button, age, labels, badge, prPill, describeFailure, notice, external } from './dom'
 import { drawers } from './drawer'
@@ -69,14 +69,16 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
     lanes.classList.remove('drag-pr')
   }
   const columns = new Map<string, { lane: HTMLElement; heading: HTMLElement; list: HTMLElement }>()
-  for (const [key, title] of Object.entries(labels)) {
+  for (const [key, title] of [...itemLanes, 'prs', 'merged'].map(
+    (key) => [key, labels[key as keyof typeof labels]] as const,
+  )) {
     const lane = el('section', '', 'lane'),
       heading = el('h2', title),
       list = el('div', '', 'list')
     lane.dataset.key = key
     lane.style.setProperty('--tone', 'var(--' + key + ')')
     lane.append(heading, list)
-    if (statuses.includes(key as Status)) {
+    if (statuses.some((s) => s === key)) {
       lane.ondragover = (e) => {
         if (draggedItem) e.preventDefault()
       }
@@ -285,9 +287,9 @@ export function view(saved: Awaited<ReturnType<typeof readViews>>, store: Awaite
       }
       while (parent.children.length > children.length) parent.lastElementChild?.remove()
     }
-    for (const [key, { lane, heading, list }] of columns) {
+    for (const [key, { heading, list }] of columns) {
       const column = board.columns.find((c) => c.status === key)
-      lane.hidden = key === 'planned' && !column
+
       let nodes: HTMLElement[] = []
       if (key === 'prs') {
         heading.replaceChildren(labels.prs, el('span', String(prs.length)))

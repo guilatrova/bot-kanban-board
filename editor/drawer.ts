@@ -1,6 +1,6 @@
 import { el, button, age, labels, notice, prPill, external, badge } from './dom'
 import { showFiles } from './diff'
-import { itemKey, prKey, type Item, type MappedPr, type Workspace } from '../src/core/model'
+import { isClosed, itemKey, prKey, type Item, type MappedPr, type Workspace } from '../src/core/model'
 export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: Item) => HTMLElement) {
   const dialog = el('dialog'),
     body = el('section'),
@@ -38,7 +38,7 @@ export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: It
       el('small', i.bot + ' · Item #' + i.number + ' · ' + age(i.updated)),
       el('h2', i.title),
       el('mark', labels[i.status]),
-      statusSelector(i),
+      ...(isClosed(i.status) ? [] : [statusSelector(i)]),
     )
     const answer = async () =>
       notice(await orca.plugin.request('board.jump', { computer: i.computer, bot: i.bot, number: i.number }))

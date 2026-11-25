@@ -46,8 +46,9 @@ export function localDate(date: Date) {
     String(date.getDate()).padStart(2, '0'),
   ].join('-')
 }
+export const isToday = (date: Date, now = new Date()) => localDate(date) === localDate(now)
 export function mergedToday(prs: MergedPr[], now = new Date()) {
   return prs
-    .filter((p) => localDate(new Date(p.mergedAt)) === localDate(now))
+    .filter((p) => isToday(new Date(p.mergedAt), now))
     .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
 }

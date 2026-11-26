@@ -74,6 +74,7 @@ export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement
       footer.append(
         button('Try again', () => queue.send(), 'undo-primary'),
         button('Settings', () => settings.click()),
+        button('Dismiss', queue.undo),
       )
     } else if (state.kind === 'canceled') {
       title.textContent = 'Message to ' + bot + ' canceled'

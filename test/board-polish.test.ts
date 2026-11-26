@@ -85,10 +85,41 @@ it('sends immediately, reports failure and permits retry', async () => {
   const { queue, deliver, changed } = setup(false)
   queue.enqueue(['a'])
   await queue.send()
-  expect(changed.mock.lastCall?.[0].kind).toBe('failed')
+  await vi.advanceTimersByTimeAsync(3100)
+  expect(changed.mock.lastCall?.[0]).toEqual({ kind: 'failed', refs: ['a'] })
   deliver.mockResolvedValue(true)
   await queue.send()
   expect(changed.mock.lastCall?.[0].kind).toBe('sent')
   await vi.runAllTimersAsync()
   expect(deliver).toHaveBeenCalledTimes(2)
+})
+
+it('includes failed refs in the next merge notification', async () => {
+  const { queue, deliver } = setup(false)
+  queue.enqueue(['a'])
+  await queue.send()
+  deliver.mockResolvedValue(true)
+  queue.enqueue(['b'])
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(deliver.mock.calls).toEqual([[['a']], [['a', 'b']]])
+})
+
+it('recovers an in-flight failure inside the newer pending window', async () => {
+  const { queue, deliver, changed } = setup()
+  let finish!: (ok: boolean) => void
+  deliver.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  queue.enqueue(['a'])
+  const first = queue.send()
+  queue.enqueue(['b'])
+  await vi.advanceTimersByTimeAsync(4000)
+  finish(false)
+  await first
+  expect(changed.mock.lastCall?.[0]).toMatchObject({ kind: 'pending', refs: ['a', 'b'] })
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(deliver.mock.calls).toEqual([[['a']], [['a', 'b']]])
 })

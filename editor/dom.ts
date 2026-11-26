@@ -36,7 +36,6 @@ export function notice(error: unknown) {
   node.textContent = hideIds(String(error))
   noticeTimer = setTimeout(() => node.replaceChildren(), 6500)
 }
-export { age } from '../src/core/presentation'
 export const labels = {
   closed: 'Closed',
   done: 'Completed',
@@ -48,17 +47,13 @@ export const labels = {
   prs: 'Pull requests',
   merged: 'Merged',
 }
-export function prState(pr: { draft: boolean; mergeable: string }) {
-  return pr.draft
-    ? 'Draft'
-    : pr.mergeable === 'CONFLICTING'
-      ? 'Conflict'
-      : pr.mergeable === 'MERGEABLE'
-        ? 'Ready to merge'
-        : 'Ready for review'
+export function conflictPill() {
+  return el('mark', 'Conflict', 'conflict')
 }
 export function prPill(pr: { draft: boolean; mergeable: string }) {
-  return el('mark', prState(pr), pr.draft ? 'draft' : pr.mergeable === 'CONFLICTING' ? 'conflict' : 'ready')
+  if (pr.draft) return el('mark', 'Draft', 'draft')
+  if (pr.mergeable === 'CONFLICTING') return conflictPill()
+  return el('mark', pr.mergeable === 'MERGEABLE' ? 'Ready to merge' : 'Ready for review', 'ready')
 }
 export async function openExternal(url: string) {
   if (new URL(url).protocol !== 'https:') throw Error('Invalid GitHub URL')

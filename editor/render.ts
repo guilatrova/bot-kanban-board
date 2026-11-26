@@ -9,12 +9,12 @@ import { dropZones } from './drop-zones'
 import { selection, buildDeck } from './selection'
 import { mergeQueue } from './merge-queue'
 import { shownMerges, type MergedPr } from '../src/core/merge'
-import { prStats, shortRef } from '../src/core/presentation'
+import { age, prStats, shortRef } from '../src/core/presentation'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { patch, el, button, age, badge, notice, labels } from './dom'
+import { patch, el, button, badge, notice, labels, conflictPill } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
@@ -288,7 +288,7 @@ export function view(
           if (check) stats.append(' · ', el('span', check, failed ? 'failed' : ''))
           node.append(stats)
           if (merging) node.append(el('mark', 'Merging…', 'ready'))
-          else if (row.mergeable === 'CONFLICTING') node.append(el('mark', 'Conflict', 'conflict'))
+          else if (row.mergeable === 'CONFLICTING') node.append(conflictPill())
         }
         if (!isItem && row.behind) node.append(el('p', 'Behind ' + row.behind))
         appendCardLinks(links, cards, node, stats)

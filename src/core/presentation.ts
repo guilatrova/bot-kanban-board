@@ -1,4 +1,4 @@
-import { checksLabel } from './merge'
+import { checksFailed, checksLabel } from './merge'
 import type { IssueRef, PullRequest } from './model'
 
 export const countLabel = (count: number, noun: string) => numbers.format(count) + ' ' + noun + (count === 1 ? '' : 's')
@@ -9,7 +9,7 @@ export function prStats(pr: Pick<PullRequest, 'additions' | 'deletions' | 'files
     diff:
       '+' + numbers.format(pr.additions) + ' −' + numbers.format(pr.deletions) + ' · ' + countLabel(pr.files, 'file'),
     check: checksLabel(pr.checks),
-    failed: ['FAILURE', 'ERROR'].includes(pr.checks ?? ''),
+    failed: checksFailed(pr.checks),
   }
 }
 export function age(time: number | string, short = false, now = Date.now()) {

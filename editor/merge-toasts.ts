@@ -59,7 +59,7 @@ export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement
     sub.textContent = countLabel(merged.length, 'pull request') + ' merged · ' + refs
     if (state.kind === 'pending' || state.kind === 'sending') {
       bot = prefs.botName || 'the bot'
-      title.textContent = 'Telling ' + bot + (state.refs.length > 1 ? ' about the batch' : '')
+      title.textContent = 'Telling ' + bot + (merged.length > 1 ? ' about the batch' : '')
       if (state.kind === 'pending') {
         const track = el('span', '', 'undo-track')
         footer.append(

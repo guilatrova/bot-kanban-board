@@ -15,18 +15,26 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
   const bar = el('div', '', 'selbar')
   bar.append(label, button('Clear', clear), go)
   document.body.append(bar)
-  function allowed(drag = false) {
+  const list = lane.querySelector<HTMLElement>('.list')!
+  function allowed(drag?: Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom'>) {
+    const viewport = drag ? list.getBoundingClientRect() : undefined
     return selectableCards(
       [...visible.keys()].map((key) => {
         const card = cards.get(key)
-        const list = card?.closest('.list')
         let inViewport = false
-        if (drag && card && list) {
-          const r = card.getBoundingClientRect(),
-            clip = list.getBoundingClientRect()
+        if (drag && viewport && card) {
+          const rect = card.getBoundingClientRect()
+          const left = Math.max(rect.left, viewport.left),
+            right = Math.min(rect.right, viewport.right)
+          const top = Math.max(rect.top, viewport.top),
+            bottom = Math.min(rect.bottom, viewport.bottom)
           inViewport =
-            Math.max(r.top, clip.top) < Math.min(r.bottom, clip.bottom) &&
-            Math.max(r.left, clip.left) < Math.min(r.right, clip.right)
+            left < right &&
+            top < bottom &&
+            drag.left <= right &&
+            drag.right >= left &&
+            drag.top <= bottom &&
+            drag.bottom >= top
         }
         return {
           key,
@@ -35,7 +43,7 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
           inViewport,
         }
       }),
-      drag,
+      Boolean(drag),
     )
   }
   const prune = () => {
@@ -97,20 +105,17 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
         width: right - left + 'px',
         height: bottom - top + 'px',
       })
-      const available = allowed(true)
+      const available = allowed({
+        left: Math.max(bounds.left, left),
+        right: Math.min(bounds.right, right),
+        top,
+        bottom,
+      })
       const open = allowed()
       for (const key of visible.keys()) {
         const card = cards.get(key)
         if (!card) continue
-        const r = card.getBoundingClientRect(),
-          clip = card.closest('.list')!.getBoundingClientRect()
-        const hit =
-          r.width > 0 &&
-          r.height > 0 &&
-          available.has(key) &&
-          Math.max(r.left, clip.left, bounds.left, left) <= Math.min(r.right, clip.right, bounds.right, right) &&
-          Math.max(r.top, clip.top, top) <= Math.min(r.bottom, clip.bottom, bottom)
-        if (hit || (base.has(key) && open.has(key))) {
+        if (available.has(key) || (base.has(key) && open.has(key))) {
           if (!selected.has(key) && !matchMedia('(prefers-reduced-motion: reduce)').matches)
             card.animate([{ scale: '1.015' }, { scale: '1' }], { duration: 180, easing: 'cubic-bezier(.34,1.4,.5,1)' })
           selected.add(key)

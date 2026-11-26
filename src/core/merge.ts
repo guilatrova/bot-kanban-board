@@ -13,10 +13,11 @@ export type MergePreferences = {
   tellBot: boolean
   askBeforeMerging: boolean
 }
+export const checksFailed = (checks: string | null) => checks === 'FAILURE' || checks === 'ERROR'
 export function checksLabel(checks: string | null) {
   if (!checks) return ''
   if (checks === 'SUCCESS') return 'Checks passed'
-  return ['FAILURE', 'ERROR'].includes(checks) ? 'Checks failed' : 'Checks running'
+  return checksFailed(checks) ? 'Checks failed' : 'Checks running'
 }
 export function mergeableLabel(state: string) {
   if (state === 'MERGEABLE') return 'No conflicts'

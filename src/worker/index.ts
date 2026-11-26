@@ -1,15 +1,15 @@
-import { source } from './sources/read'
+import { failureLog } from './failure-log'
+import { readBoardPr, readFailureToLog, refreshFailure } from './read-board-pr'
 import { mergePreflight } from './merge-preflight'
 import { savedBoard } from './saved-board'
 import { serveSnapshots } from './snapshot'
 import { retry } from './polling'
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot, Progress } from '../protocol'
-import { prKey } from '../core/model'
+import { prKey, type Failure } from '../core/model'
 import { refreshItemData } from './refresh-items'
 import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
-import { github, files, mergePr, closePr, readRepository, readPull } from './sources/github'
-import { stackOrder } from '../core/stacks'
+import { github, files, mergePr, closePr } from './sources/github'
 import { openBoard } from './board-file'
 import { sendBotMessage } from './bot-message'
 import { avatars } from './avatars'
@@ -34,7 +34,11 @@ export default async function activate(orca: OrcaWorkerApi) {
         error: null,
         focus: false,
       }
-  const report = (e: unknown) => orca.log(String(e))
+  const { write, logged } = failureLog(undefined, (message) => orca.log(message))
+  const report = (error: unknown) => {
+    orca.log(String(error))
+    void write({ step: 'plugin', error })
+  }
   const saved = savedBoard(orca.storage, data, report)
   if (!demo) await Promise.all([saved.load('orca'), saved.load('github')])
   const landed = new Map<string, MergedPr>()
@@ -67,7 +71,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   }
   const evaluateBells = await notifications(orca, data, publish)
   let itemJob: Promise<void> | null = null,
-    prJob: Promise<void> | null = null
+    prJob: Promise<void | Failure> | null = null
   let previousItems = data.sources.orca
   let previousPrs = data.sources.github
   function refreshItems() {
@@ -92,10 +96,11 @@ export default async function activate(orca: OrcaWorkerApi) {
     const interval = Math.max(10, Number(await orca.settings.get('prSeconds')) || 90) * 1000
     clearTimeout(timer)
     if (visible.size && !demo)
-      timer = setTimeout(() => void refreshPrs().catch(report), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
+      timer = setTimeout(() => void refreshPrs(), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
   }
-  function refreshPrs(manual = false): Promise<void> {
-    if (limitedUntil > Date.now()) return planPoll()
+  const reportRefreshFailure = (error: unknown) => refreshFailure(error, report)
+  function refreshPrs(manual = false): Promise<void | Failure> {
+    if (limitedUntil > Date.now()) return planPoll().catch(reportRefreshFailure)
 
     if (prJob) return manual ? prJob.then(() => refreshPrs(true)) : prJob
     previousPrs = data.sources.github
@@ -137,14 +142,15 @@ export default async function activate(orca: OrcaWorkerApi) {
       publish()
     })()
       .catch((error) => {
-        report(error)
         if (data.sources.github === previousPrs) data.sources.github = { ...data.sources.github, status: 'failed' }
         publish()
+        throw error
       })
       .finally(async () => {
         prJob = null
         await planPoll()
-      }))
+      })
+      .catch(reportRefreshFailure))
   }
   function refresh(opening = false, manual = false) {
     if (demo) return
@@ -152,7 +158,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     void refreshItems().catch(report)
     if (opening && (!prJob || data.sources.github === previousPrs) && limitedUntil <= Date.now())
       data.sources.github.status = 'stale'
-    if (opening || visible.size) void refreshPrs(manual).catch(report)
+    if (opening || visible.size) void refreshPrs(manual)
   }
   orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id
@@ -168,28 +174,14 @@ export default async function activate(orca: OrcaWorkerApi) {
     return null
   })
   serveSnapshots(orca, data, () => refresh(true))
-  orca.panels.handle('pr.read', async (input) => {
-    const ghPath = await path('ghPath')
-    const { repo, number } = input
-    const read = demo ? undefined : await source('gh api graphql', () => readPull(ghPath, { repo, number }))
-    if (read && !read.ok) return read
-    const live = read?.value
-    if (live?.closed) return { closed: true as const, merged: false as const }
-    if (live?.merged || (demo && data.merged.some((p) => prKey(p) === prKey(input)))) {
-      if (live?.merged) recordMerged(live.row)
-      return { merged: true as const }
-    }
-    if (input.prOnly && live?.pr) {
-      data.repos[repo] = await readRepository(ghPath, repo)
-      const index = data.prs.findIndex((p) => prKey(p) === prKey(input))
-      if (index >= 0) data.prs[index] = live.pr
-    } else if (!demo) await refreshPrs()
-    const pr = live?.pr ?? data.prs.find((p) => prKey(p) === prKey(input))
-    const facts = data.error || data.repos[input.repo]
-    if (!pr || !facts) throw Error('Pull request unavailable.')
-    const ordered = stackOrder([pr, ...data.prs.filter((p) => prKey(p) !== prKey(input))])
-    return { merged: false as const, pr: ordered.find((p) => prKey(p) === prKey(input))!, facts }
-  })
+  orca.panels.handle(
+    'pr.read',
+    logged(
+      'PR read',
+      async (input) => readBoardPr(await path('ghPath'), input, data, demo, refreshPrs, recordMerged),
+      readFailureToLog,
+    ),
+  )
   orca.panels.handle('board.refresh', async () => {
     if (demo) publish()
     else refresh(false, true)
@@ -218,109 +210,114 @@ export default async function activate(orca: OrcaWorkerApi) {
   orca.panels.handle('board.jump', async (input) =>
     demo ? 'Demo chat selected.' : jump(orca, data.computers, await path('orcaPath'), input),
   )
-  orca.panels.handle('pr.close', async (input) => {
-    const key = prKey(input)
-    const pr = data.prs.find((p) => prKey(p) === key)
-    if (demo || !pr || busy(key) || data.error)
-      return {
-        ok: false as const,
-        command: 'Close PR',
-        message: demo ? 'Demo data is read-only.' : 'Pull request unavailable.',
-        next: 'Refresh the board.',
+  orca.panels.handle(
+    'pr.close',
+    logged('close', async (input) => {
+      const key = prKey(input)
+      const pr = data.prs.find((p) => prKey(p) === key)
+      if (demo || !pr || busy(key) || data.error)
+        return {
+          ok: false as const,
+          command: 'Close PR',
+          message: demo ? 'Demo data is read-only.' : 'Pull request unavailable.',
+          next: 'Refresh the board.',
+        }
+      closingPrs.add(key)
+      try {
+        const result = await closePr(await path('ghPath'), pr)
+        if (result.ok) {
+          removeOpen(key)
+          publish()
+        }
+        return result
+      } finally {
+        closingPrs.delete(key)
+        void Promise.resolve(prJob).then(() => refreshPrs())
       }
-    closingPrs.add(key)
-    try {
-      const result = await closePr(await path('ghPath'), pr)
-      if (result.ok) {
-        removeOpen(key)
-        publish()
-      }
-      return result
-    } finally {
-      closingPrs.delete(key)
-      void (async () => {
-        await prJob
-        await refreshPrs()
-      })().catch(report)
-    }
-  })
-  orca.panels.handle('pr.merge', async (input) => {
-    const key = prKey(input),
-      pr = data.prs.find((p) => prKey(p) === key),
-      repo = data.repos[input.repo]
-    if (
-      !pr ||
-      !input.sha ||
-      input.updated !== pr.updated ||
-      input.sha !== pr.sha ||
-      !repo?.ok ||
-      data.error ||
-      busy(key)
-    )
-      return {
-        ok: false as const,
-        command: 'Merge',
-        message: 'Pull request unavailable, changed or already merging.',
-        next: 'Refresh the board and reopen the confirmation.',
-      }
-    data.running = [...(data.running ?? []), key]
-    publish()
-    try {
-      let current = pr
-      if (!demo) {
-        const live = await mergePreflight(await path('ghPath'), input, data, recordMerged, removeOpen, publish)
-        if (!live.ok) return live
-        current = live.value
-      }
-      const assessment = assessMerge(current, repo.value)
-      if (!assessment.canMerge || !assessment.methods.includes(input.method))
+    }),
+  )
+  orca.panels.handle(
+    'pr.merge',
+    logged('preflight', async (input, setStep) => {
+      const key = prKey(input),
+        pr = data.prs.find((p) => prKey(p) === key),
+        repo = data.repos[input.repo]
+      if (
+        !pr ||
+        !input.sha ||
+        input.updated !== pr.updated ||
+        input.sha !== pr.sha ||
+        !repo?.ok ||
+        data.error ||
+        busy(key)
+      )
         return {
           ok: false as const,
           command: 'Merge',
-          message: assessment.blockers.join(' ') || 'Method unavailable.',
-          next: 'Refresh and check the repository settings.',
+          message: 'Pull request unavailable, changed or already merging.',
+          next: 'Refresh the board and reopen the confirmation.',
         }
-      const progress = (e: Progress) => orca.panels.post('merge.progress', e)
-      const ready = () => {
-        current.draft = false
-        publish()
-      }
-      const result = demo
-        ? await demoMerge(current, progress, ready, false)
-        : await mergePr(await path('ghPath'), current, input, progress, ready)
-      if (result.ok) recordMerged({ ...current, mergedAt: new Date().toISOString() })
-      return result
-    } finally {
-      data.running = data.running?.filter((k) => k !== key)
+      data.running = [...(data.running ?? []), key]
       publish()
-      if (!demo && !input.prOnly)
-        void (async () => {
-          await prJob
-          await refreshPrs()
-        })().catch(report)
-    }
-  })
-  orca.panels.handle('pr.files', async (input) => {
-    if (demo) return { ok: true as const, value: { data: '[]', end: true } }
-    const pr = data.prs.find((p) => prKey(p) === input.key && p.updated === input.updated),
-      key = input.key + '@' + input.updated
-    if (!pr)
-      return {
-        ok: false as const,
-        command: 'gh api pulls/files',
-        message: 'The pull request changed.',
-        next: 'Reopen its drawer.',
+      try {
+        let current = pr
+        if (!demo) {
+          const live = await mergePreflight(await path('ghPath'), input, data, recordMerged, removeOpen, publish)
+          if (!live.ok) return live
+          current = live.value
+        }
+        const assessment = assessMerge(current, repo.value)
+        if (!assessment.canMerge || !assessment.methods.includes(input.method))
+          return {
+            ok: false as const,
+            command: 'Merge',
+            message: assessment.blockers.join(' ') || 'Method unavailable.',
+            next: 'Refresh and check the repository settings.',
+          }
+        const progress = (e: Progress) => {
+          setStep('merge')
+          orca.panels.post('merge.progress', e)
+        }
+        const ready = () => {
+          current.draft = false
+          publish()
+        }
+        const result = demo
+          ? await demoMerge(current, progress, ready, false)
+          : await mergePr(await path('ghPath'), current, input, progress, ready)
+        if (result.ok) recordMerged({ ...current, mergedAt: new Date().toISOString() })
+        return result
+      } finally {
+        data.running = data.running?.filter((k) => k !== key)
+        publish()
+        if (!demo && !input.prOnly) void Promise.resolve(prJob).then(() => refreshPrs())
       }
-    let json = fileCache.get(key)
-    if (!json) {
-      const result = await files(await path('ghPath'), pr)
-      if (!result.ok) return result
-      json = JSON.stringify(result.value)
-      fileCache.set(key, json)
-    }
-    const end = input.offset + 32000
-    return { ok: true as const, value: { data: json.slice(input.offset, end), end: end >= json.length } }
-  })
+    }),
+  )
+  orca.panels.handle(
+    'pr.files',
+    logged('PR files', async (input) => {
+      if (demo) return { ok: true as const, value: { data: '[]', end: true } }
+      const pr = data.prs.find((p) => prKey(p) === input.key && p.updated === input.updated),
+        key = input.key + '@' + input.updated
+      if (!pr)
+        return {
+          ok: false as const,
+          command: 'gh api pulls/files',
+          message: 'The pull request changed.',
+          next: 'Reopen its drawer.',
+        }
+      let json = fileCache.get(key)
+      if (!json) {
+        const result = await files(await path('ghPath'), pr)
+        if (!result.ok) return result
+        json = JSON.stringify(result.value)
+        fileCache.set(key, json)
+      }
+      const end = input.offset + 32000
+      return { ok: true as const, value: { data: json.slice(input.offset, end), end: end >= json.length } }
+    }),
+  )
   for (const id of ['bot-kanban-board.needs-you', 'bot-kanban-board.open'])
     orca.commands.register(id, async () => {
       try {

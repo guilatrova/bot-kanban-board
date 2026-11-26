@@ -4,12 +4,16 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { reader } from './sources/read'
 import { obj, str } from '../core/normalize'
-export async function openBoard(orca: OrcaWorkerApi, path: string | null) {
+export function pluginDataFolder() {
   const root =
     process.platform === 'darwin'
       ? join(homedir(), 'Library', 'Application Support')
       : process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share')
-  const folder = join(root, 'bot-kanban-board'),
+  return join(root, 'bot-kanban-board')
+}
+
+export async function openBoard(orca: OrcaWorkerApi, path: string | null) {
+  const folder = pluginDataFolder(),
     file = 'Board.botkanban'
   await mkdir(folder, { recursive: true })
   try {

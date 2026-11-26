@@ -6,6 +6,7 @@ import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { Source } from '../core/model'
 
+const timeoutSeconds = 45
 const execute = promisify(execFile)
 const sessionKeys = [
   'ORCA_AGENT_SESSION_ID',
@@ -61,7 +62,7 @@ export async function runCli(
     const path = await binaryPath(binary, configured)
     const { stdout } = await execute(path, headers ? [args[0]!, '-i', ...args.slice(1)] : args, {
       env,
-      timeout: 45_000,
+      timeout: timeoutSeconds * 1000,
       maxBuffer: 64 * 1024 * 1024,
     })
     if (format === 'text') return { ok: true, value: stdout }
@@ -72,6 +73,18 @@ export async function runCli(
     throw new Error(envelopeMessage(json) || 'Invalid Orca response')
   } catch (error) {
     let message = error instanceof Error ? error.message.split('\n').slice(-2).join(' ').trim() : 'Command failed'
+    let detail: string | undefined
+    const timedOut =
+      error instanceof Error &&
+      'killed' in error &&
+      error.killed === true &&
+      'signal' in error &&
+      error.signal === 'SIGTERM'
+    const network =
+      binary === 'gh' &&
+      error instanceof Error &&
+      'stderr' in error &&
+      /error connecting to|dial tcp|ENOTFOUND|ECONNRESET|ETIMEDOUT|getaddrinfo|no such host/i.test(String(error.stderr))
     let status: number | undefined,
       resetAt: number | undefined,
       rateLimited = false
@@ -97,9 +110,32 @@ export async function runCli(
           typeof payload === 'object' &&
           'message' in payload &&
           typeof payload.message === 'string'
-        )
+        ) {
           message = payload.message
-        else message = envelopeMessage(payload) || message
+          const errors: unknown[] = 'errors' in payload && Array.isArray(payload.errors) ? payload.errors : []
+          const lines = errors.map((entry) => {
+            if (typeof entry === 'string') return entry
+            if (!entry || typeof entry !== 'object') return ''
+            if ('message' in entry && typeof entry.message === 'string' && entry.message.trim()) return entry.message
+            return [
+              'resource' in entry && entry.resource,
+              'field' in entry && entry.field,
+              'code' in entry && entry.code,
+            ]
+              .filter((v) => typeof v === 'string' && v)
+              .join(' ')
+          })
+          const url =
+            'documentation_url' in payload && typeof payload.documentation_url === 'string'
+              ? payload.documentation_url
+              : ''
+          detail = [message, ...lines, url]
+            .filter(Boolean)
+            .join('\n')
+            .replace(/\r\n/g, '\n')
+            .replace(/\n(?:[ \t]*\n)+/g, '\n\n')
+            .trim()
+        } else message = envelopeMessage(payload) || message
       } catch {
         /* No Orca envelope. */
       }
@@ -108,6 +144,8 @@ export async function runCli(
       ok: false,
       command,
       message,
+      ...(detail ? { detail } : {}),
+      ...(timedOut ? { kind: 'timeout' as const, timeoutSeconds } : network ? { kind: 'network' as const } : {}),
       ...(status ? { status } : {}),
       ...(resetAt ? { resetAt } : {}),
       ...(rateLimited ? { rateLimited } : {}),

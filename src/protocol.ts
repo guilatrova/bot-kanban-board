@@ -21,7 +21,8 @@ export interface Progress {
 }
 import type { Computer, Failure, PullRequest, Source, SourceState } from './core/model'
 import type { Bell } from './core/bells'
-export interface Snapshot {
+import type { SyncMetadata } from './core/pr-sync'
+export interface Snapshot extends SyncMetadata {
   sources: { orca: SourceState; github: SourceState }
   bells?: Bell[]
   notificationsOff?: boolean

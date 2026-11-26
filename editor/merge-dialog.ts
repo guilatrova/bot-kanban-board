@@ -5,10 +5,9 @@ import {
   methodLabels,
   type MergePreferences,
   assessMerge,
-  type RepositoryFacts,
   type MergeMethod,
 } from '../src/core/merge'
-import { prKey, type MappedPr, type Source } from '../src/core/model'
+import { prKey, type MappedPr } from '../src/core/model'
 import { el, button, describeFailure, notice } from './dom'
 
 export function mergeDialog(saved: MergePreferences, update: () => void) {
@@ -30,11 +29,10 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
     )
       modal.close()
   }
-  return (
+  return async (
     pr: MappedPr,
-    facts?: Source<RepositoryFacts>,
     closing = false,
-    chosen?: (method: MergeMethod, warnings: Warning[]) => void,
+    chosen?: (method: MergeMethod, warnings: Warning[], live: MappedPr) => void,
     dismiss?: () => void,
   ) => {
     if (modal.open) {
@@ -74,6 +72,21 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
       )
       return
     }
+    summary.textContent = 'Reading pull request…'
+    const live = await orca.plugin
+      .request('pr.read', { repo: pr.repo, number: pr.number, prOnly: true }, { timeoutMs: 120000 })
+      .catch((error: unknown) => {
+        summary.textContent = String(error)
+        return null
+      })
+    if (!live || !modal.open || !modal.contains(summary)) return
+    if (live.closed || live.merged) {
+      summary.textContent = live.merged ? 'Pull request already merged.' : 'Pull request already closed.'
+      return
+    }
+    pr = { ...pr, ...live.pr, behind: live.pr.behind }
+    const facts = live.facts
+    summary.replaceChildren()
     if (pr.behind) summary.append(el('p', 'Merging out of order · ' + pr.behind + ' is still open.', 'warning'))
     if (!facts?.ok || !pr.sha) {
       summary.append(
@@ -125,7 +138,7 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
             saved.askBeforeMerging = false
             update()
           }
-          chosen?.(select.value as MergeMethod, assessment.warnings)
+          chosen?.(select.value as MergeMethod, assessment.warnings, pr)
         },
         assessment.warnings.some((w) => w.danger) ? 'confirm danger' : 'confirm',
       ),

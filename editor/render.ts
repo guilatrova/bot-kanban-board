@@ -82,7 +82,7 @@ export function view(
   }
   const drawer = drawers((pr) => start([pr]), actions.selector)
   const columns = new Map<Lane, ReturnType<typeof makeLane>>()
-  const zones = dropZones(columns, queue.panel, actions.move, start, (pr) => confirm(pr, undefined, true))
+  const zones = dropZones(columns, queue.panel, actions.move, start, (pr) => void confirm(pr, true).catch(notice))
   for (const key of laneKeys) {
     const col = makeLane(key, collapsed, () => orca.storage.set('collapsed', [...collapsed]))
     const { lane } = col

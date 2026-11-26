@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { applyIncremental, syncMode, FULL_SYNC_MS, type SyncRow } from '../src/core/pr-sync'
 import sample from './fixtures/board.json'
 import { botOwners, bots, unpairedComputers, items, pullRequest } from '../src/core/normalize'
 import { mapPrs } from '../src/core/map-prs'
@@ -16,6 +17,34 @@ const workspace: Workspace = {
   branch: 'marker',
   home: null,
 }
+it('reconciles overlapping PR changes until a full sync is due', () => {
+  const now = new Date(2026, 0, 10, 12)
+  const at = now.toISOString()
+  const state = { syncedAt: at, fullSyncedAt: at, login: 'owner' }
+  const options = { now, login: 'owner', manual: false }
+  expect(syncMode(state, options)).toBe('incremental')
+  for (const overrides of [{ manual: true }, { login: 'other' }, { now: new Date(+now + FULL_SYNC_MS) }])
+    expect(syncMode(state, { ...options, ...overrides })).toBe('full')
+  expect(syncMode({}, options)).toBe('full')
+  const original = {
+    prs: [pr, { ...pr, number: 3 }],
+    merged: [{ ...pr, number: 5, mergedAt: new Date(+now - 86400000).toISOString() }],
+    total: 240,
+  }
+  const added = { ...pr, number: 4, updated: at }
+  const changed = { ...pr, number: 3, title: 'Updated' }
+  const rows: SyncRow[] = [
+    { pr, state: 'MERGED', mergedAt: at },
+    { pr: added, state: 'OPEN' },
+    { pr: changed, state: 'OPEN' },
+    { pr: added, state: 'CLOSED' },
+  ]
+  const next = applyIncremental(original, rows, now)
+  expect(next).toEqual({ prs: [changed], merged: [{ ...pr, mergedAt: at }], total: 239 })
+  expect(applyIncremental(next, rows, now)).toEqual(next)
+  expect(applyIncremental({ ...original, allOpenLoaded: true }, rows, now).total).toBe(1)
+})
+
 describe('normalize', () => {
   it('requires source fields', () => {
     expect(() => bots({ bots: [{}] }, 'local')).toThrow('id')

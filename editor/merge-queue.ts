@@ -70,7 +70,7 @@ export function mergeQueue(
       const ref = { repo: pr.repo, number: pr.number, prOnly: !manual }
       const current = await orca.plugin.request('pr.read', ref, { timeoutMs: 120000 })
       if (current.merged || current.closed) return 'removed'
-      const fresh = { ...pr, ...current.pr, behind: current.pr.behind }
+      let fresh: MappedPr = { ...pr, ...current.pr, behind: current.pr.behind }
       let method = approved?.method ?? prefs.mergeMethod
       const same = approved?.sha === fresh.sha
       if (
@@ -78,19 +78,21 @@ export function mergeQueue(
         !canMergeWithoutDialog(fresh, current.facts.value, method, same ? approved?.facts : undefined) ||
         (prefs.askBeforeMerging && !same)
       ) {
-        const choice = await new Promise<typeof approved>((resolve) =>
-          dialog(
-            fresh,
-            current.facts,
-            false,
-            (m, warnings) =>
-              resolve({
-                method: m,
-                sha: fresh.sha ?? '',
-                facts: { warnings, behind: fresh.behind, mergeable: fresh.mergeable },
-              }),
-            () => resolve(undefined),
-          ),
+        const choice = await new Promise<typeof approved>(
+          (resolve, reject) =>
+            void dialog(
+              fresh,
+              false,
+              (m, warnings, live) => {
+                fresh = live
+                resolve({
+                  method: m,
+                  sha: fresh.sha ?? '',
+                  facts: { warnings, behind: fresh.behind, mergeable: fresh.mergeable },
+                })
+              },
+              () => resolve(undefined),
+            ).catch(reject),
         )
         if (!choice) return 'removed'
         approved = choice

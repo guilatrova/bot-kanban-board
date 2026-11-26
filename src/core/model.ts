@@ -1,3 +1,7 @@
+export interface SourceState {
+  status: 'stale' | 'fresh' | 'failed'
+  at: number
+}
 export type Failure = {
   status?: number
   resetAt?: number

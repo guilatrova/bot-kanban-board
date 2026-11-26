@@ -19,9 +19,10 @@ export interface Progress {
   state: 'running' | 'done' | 'failed'
   failure?: Failure
 }
-import type { Computer, Failure, PullRequest, Source } from './core/model'
+import type { Computer, Failure, PullRequest, Source, SourceState } from './core/model'
 import type { Bell } from './core/bells'
 export interface Snapshot {
+  sources: { orca: SourceState; github: SourceState }
   bells?: Bell[]
   notificationsOff?: boolean
   demo?: boolean

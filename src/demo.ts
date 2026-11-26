@@ -121,6 +121,7 @@ export function demoBoard(state: string | null = null) {
     merged: [],
     banner: null,
     total: 2,
+    sources: { orca: { status: 'fresh', at: Date.now() }, github: { status: 'fresh', at: Date.now() } },
     prsAt: Date.now(),
     itemsAt: Date.now(),
     error: null,

@@ -20,6 +20,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   const data: Snapshot = demo
     ? demoBoard()
     : {
+        sources: { orca: { status: 'stale', at: 0 }, github: { status: 'stale', at: 0 } },
         computers: [],
         prs: [],
         repos: {},

@@ -1,3 +1,4 @@
+import { itemStatusActions } from '../src/core/flags'
 import { panelRequest } from './panel-request'
 import { el, button, age, labels, notice, prPill, external, badge } from './dom'
 import { countLabel } from './pr-labels'
@@ -40,7 +41,7 @@ export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: It
       el('small', i.bot + ' · Item #' + i.number + ' · ' + age(i.updated)),
       el('h2', i.title),
       el('mark', labels[i.status]),
-      ...(isClosed(i.status) ? [] : [statusSelector(i)]),
+      ...(itemStatusActions && !isClosed(i.status) ? [statusSelector(i)] : []),
     )
     const answer = async () =>
       notice(await panelRequest('board.jump', { computer: i.computer, bot: i.bot, number: i.number }))

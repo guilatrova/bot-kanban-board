@@ -18,10 +18,10 @@ export async function readBoardPr(
   const read = demo ? undefined : await source('gh api graphql', () => readPull(ghPath, { repo, number }))
   if (read && !read.ok) return read
   const live = read?.value
-  if (live?.closed) return { closed: true as const, merged: false as const }
+  if (live?.closed) return { ok: true, value: { closed: true, merged: false } }
   if (live?.merged || (demo && data.merged.some((p) => prKey(p) === prKey(input)))) {
     if (live?.merged) recordMerged(live.row)
-    return { merged: true as const }
+    return { ok: true, value: { merged: true } }
   }
   if (input.prOnly && live?.pr) {
     const repository = await source('gh api repos', () => readRepository(ghPath, repo))
@@ -44,12 +44,12 @@ export async function readBoardPr(
       next: 'Refresh the board and try again.',
     }
   const ordered = stackOrder([pr, ...data.prs.filter((p) => prKey(p) !== prKey(input))])
-  return { merged: false as const, pr: ordered.find((p) => prKey(p) === prKey(input))!, facts }
+  return { ok: true, value: { merged: false, pr: ordered.find((p) => prKey(p) === prKey(input))!, facts } }
 }
 
 export function readFailureToLog(result: PluginRequests['pr.read']['output']) {
-  if ('ok' in result) return result.command === 'Refresh PRs' ? undefined : result
-  if ('facts' in result && !result.facts.ok) return result.facts
+  if (!result.ok) return result.command === 'Refresh PRs' ? undefined : result
+  if ('facts' in result.value && !result.value.facts.ok) return result.value.facts
 }
 
 export function refreshFailure(error: unknown, report: (error: unknown) => void): Failure {

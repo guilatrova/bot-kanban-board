@@ -74,22 +74,25 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
       return
     }
     summary.textContent = 'Reading pull request…'
-    const live = await orca.plugin
-      .request('pr.read', { repo: pr.repo, number: pr.number, prOnly: true }, { timeoutMs: 120000 })
-      .catch((error: unknown) => {
-        summary.textContent = String(error)
-        return null
-      })
-    if (!live || !modal.open || !modal.contains(summary)) return
-    if ('ok' in live) {
-      summary.textContent = describeFailure(live)
+    const read = await panelRequest(
+      'pr.read',
+      { repo: pr.repo, number: pr.number, prOnly: true },
+      { timeoutMs: 120000 },
+    ).catch((error: unknown) => {
+      summary.textContent = String(error)
+      return null
+    })
+    if (!read || !modal.open || !modal.contains(summary)) return
+    if (!read.ok) {
+      summary.textContent = describeFailure(read)
       return
     }
+    const live = read.value
     if (live.closed || live.merged) {
       summary.textContent = live.merged ? 'Pull request already merged.' : 'Pull request already closed.'
       return
     }
-    pr = { ...pr, ...live.pr, behind: live.pr.behind }
+    pr = { ...pr, ...live.pr, sha: live.pr.sha, behind: live.pr.behind }
     const facts = live.facts
     summary.replaceChildren()
     if (pr.behind) summary.append(el('p', 'Merging out of order · ' + pr.behind + ' is still open.', 'warning'))

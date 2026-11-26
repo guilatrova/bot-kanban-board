@@ -60,11 +60,11 @@ declare module 'orca' {
     'board.get': { input: { index: number; fresh?: boolean }; output: Chunk }
     'pr.read': {
       input: { repo: string; number: number; prOnly?: boolean }
-      output:
-        | Failure
+      output: Source<
         | { merged: false; closed: true }
         | { merged: true; closed?: false }
         | { merged: false; closed?: false; pr: PullRequest & { behind?: string }; facts: Source<RepositoryFacts> }
+      >
     }
     'board.refresh': { input: undefined; output: null }
     'avatar.get': {

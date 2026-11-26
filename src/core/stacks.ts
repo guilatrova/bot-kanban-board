@@ -1,7 +1,7 @@
 import { prKey, type PullRequest } from './model'
 
 // Walk from each tip toward its base. A repeated branch ends the chain.
-export function stackOrder<T extends PullRequest>(prs: T[]) {
+export function stackOrder<T extends PullRequest>(prs: T[]): (T & { behind?: string })[] {
   const parents = new Map(
     prs.map((pr) => [
       pr,
@@ -25,6 +25,6 @@ export function stackOrder<T extends PullRequest>(prs: T[]) {
   }
   return [...ordered].map((pr) => {
     const parent = parents.get(pr)
-    return { ...pr, behind: parent && prKey(parent) }
+    return parent ? { ...pr, behind: prKey(parent) } : { ...pr }
   })
 }

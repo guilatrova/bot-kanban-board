@@ -86,11 +86,12 @@ export function mergeQueue(
       let step: MergeStep = 'PR read'
       try {
         const ref = { repo: pr.repo, number: pr.number, prOnly: !manual }
-        const current = await panelRequest('pr.read', ref, requestOptions)
-        if ('ok' in current) return fromFailure(current, step)
+        const read = await panelRequest('pr.read', ref, requestOptions)
+        if (!read.ok) return fromFailure(read, step)
+        const current = read.value
         step = 'merge assessment'
         if (current.merged || current.closed) return 'removed'
-        let fresh: MappedPr = { ...pr, ...current.pr, behind: current.pr.behind }
+        let fresh: MappedPr = { ...pr, ...current.pr, sha: current.pr.sha, behind: current.pr.behind }
         let method = approved?.method ?? prefs.mergeMethod
         const same = approved?.sha === fresh.sha
         if (
@@ -152,11 +153,11 @@ export function mergeQueue(
         }
         try {
           const reread = await panelRequest('pr.read', ref, requestOptions)
-          if ('ok' in reread) {
+          if (!reread.ok) {
             const readFailure = fromFailure(reread, 'PR read')
             return { ...readFailure, full: failure.full + '\nPR read: ' + readFailure.full }
           }
-          return reread.merged || reread.closed ? 'removed' : failure
+          return reread.value.merged || reread.value.closed ? 'removed' : failure
         } catch (err) {
           const readFailure = rejected(err, 'PR read')
           return { ...readFailure, full: failure.full + '\nPR read: ' + readFailure.full }

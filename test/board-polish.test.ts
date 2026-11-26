@@ -37,3 +37,58 @@ it('formats the diff, files and optional check status', () => {
   expect(prStats(pr)).toEqual({ diff: '+60,594 −0 · 202 files', check: '', failed: false })
   expect(prStats({ ...pr, checks: 'FAILURE' })).toMatchObject({ check: 'Checks failed', failed: true })
 })
+
+import { vi, afterEach } from 'vitest'
+import { undoQueue, type NoticeState } from '../src/core/undo-queue'
+afterEach(() => {
+  vi.useRealTimers()
+})
+function setup(ok = true) {
+  vi.useFakeTimers()
+  const deliver = vi.fn<(refs: string[]) => Promise<boolean>>().mockResolvedValue(ok)
+  const changed = vi.fn<(s: NoticeState<string>) => void>()
+  const queue = undoQueue<string>(
+    {
+      now: Date.now,
+      after(ms, fn) {
+        const id = setTimeout(fn, ms)
+        return () => clearTimeout(id)
+      },
+    },
+    deliver,
+    changed,
+  )
+  return { queue, deliver, changed }
+}
+it('joins two merges into one message five seconds after the latest merge', async () => {
+  const { queue, deliver, changed } = setup()
+  queue.enqueue(['a'])
+  await vi.advanceTimersByTimeAsync(4900)
+  queue.enqueue(['b'])
+  await vi.advanceTimersByTimeAsync(4999)
+  expect(deliver).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1)
+  expect(deliver.mock.calls).toEqual([[['a', 'b']]])
+  expect(changed.mock.lastCall?.[0].kind).toBe('sent')
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(changed.mock.lastCall?.[0].kind).toBe('idle')
+})
+it('undo cancels every pending merge notification', async () => {
+  const { queue, deliver, changed } = setup()
+  queue.enqueue(['a', 'b'])
+  queue.undo()
+  expect(changed.mock.lastCall?.[0].kind).toBe('canceled')
+  await vi.runAllTimersAsync()
+  expect(deliver).not.toHaveBeenCalled()
+})
+it('sends immediately, reports failure and permits retry', async () => {
+  const { queue, deliver, changed } = setup(false)
+  queue.enqueue(['a'])
+  await queue.send()
+  expect(changed.mock.lastCall?.[0].kind).toBe('failed')
+  deliver.mockResolvedValue(true)
+  await queue.send()
+  expect(changed.mock.lastCall?.[0].kind).toBe('sent')
+  await vi.runAllTimersAsync()
+  expect(deliver).toHaveBeenCalledTimes(2)
+})

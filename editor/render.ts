@@ -1,3 +1,4 @@
+import { appendCardLinks } from './card-links'
 import { itemStatusActions } from '../src/core/flags'
 import { panelRequest } from './panel-request'
 import { setStorage } from './storage'
@@ -290,24 +291,7 @@ export function view(
           else if (row.mergeable === 'CONFLICTING') node.append(el('mark', 'Conflict', 'conflict'))
         }
         if (!isItem && row.behind) node.append(el('p', 'Behind ' + row.behind))
-        for (const link of links) {
-          const item = 'status' in link,
-            k = item ? itemKey(link) : prKey(link)
-          if (item) stats.append(' · ')
-          const parent = item ? stats : node
-          parent.append(
-            button(
-              item ? 'for #' + link.number : k,
-              (e) => {
-                e.stopPropagation()
-                const target = cards.get(k)
-                target?.scrollIntoView({ block: 'nearest' })
-                target?.focus()
-              },
-              'link',
-            ),
-          )
-        }
+        appendCardLinks(links, cards, node, stats)
       }
       return node
     }

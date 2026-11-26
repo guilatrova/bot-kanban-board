@@ -25,7 +25,7 @@ export function mergeQueue(
   prefs: MergePreferences,
   dialog: ReturnType<typeof mergeDialog>,
   land: (pr: MappedPr) => Promise<void>,
-  notify: (results: MergeResult[], batch: boolean) => Promise<void>,
+  notify: (results: MergeResult[], batch: boolean) => void,
   changed: () => void,
 ) {
   const panel = el('div', '', 'queue'),
@@ -216,7 +216,7 @@ export function mergeQueue(
             changed()
             const r = await run(true)
             try {
-              if (r?.result === 'merged (manual retry)') await notify([r], false)
+              if (r?.result === 'merged (manual retry)') notify([r], false)
             } finally {
               totals()
             }
@@ -257,7 +257,7 @@ export function mergeQueue(
           bar.style.width = ((i + 1) / entries.length) * 100 + '%'
         }
         active = ''
-        await notify(results, batch.length > 1)
+        notify(results, batch.length > 1)
       } finally {
         totals()
       }

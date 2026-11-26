@@ -1,3 +1,12 @@
+import type { Progress } from '../src/protocol'
+import {
+  fromFailure,
+  fromThrown,
+  type AttemptFailure,
+  type MergeAttemptError,
+  type MergeStep,
+} from '../src/core/merge-error'
+import { mergeErrorDetails } from './merge-error-details'
 import type { MappedPr } from '../src/core/model'
 import { prKey } from '../src/core/model'
 import type { ConfirmedMerge, MergeMethod, MergePreferences } from '../src/core/merge'
@@ -7,6 +16,8 @@ import type { mergeDialog } from './merge-dialog'
 import type { MergeResult } from './merge-toasts'
 import { scrollArea } from './scroll-area'
 
+const requestTimeoutSeconds = 120
+const requestOptions = { timeoutMs: requestTimeoutSeconds * 1000 }
 const waits = [2, 4]
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 export function mergeQueue(
@@ -31,10 +42,9 @@ export function mergeQueue(
     merged = 0,
     active = '',
     timer: ReturnType<typeof setTimeout>
-  let finalStep: ((ok: boolean) => void) | undefined
+  let progress: ((event: Progress) => void) | undefined
   orca.plugin.on('merge.progress', (event) => {
-    if (event.key === active && (event.state === 'failed' || (event.step === 'merge' && event.state === 'done')))
-      finalStep?.(event.state === 'done')
+    if (event.key === active) progress?.(event)
   })
   function totals() {
     busy = false
@@ -54,6 +64,8 @@ export function mergeQueue(
       text = el('div', '', 'txt'),
       name = el('span', pr.title, 'nm'),
       status = el('span', 'queued', 'st')
+    const attempts: MergeAttemptError[] = []
+    const errors = mergeErrorDetails()
     name.title = pr.title
     text.append(name, status)
     node.append(symbol, text)
@@ -66,68 +78,95 @@ export function mergeQueue(
     }
     state('', 'queued', '')
     let approved: { method: MergeMethod; sha: string; facts: ConfirmedMerge } | undefined
-    async function attempt(manual: boolean): Promise<'merged' | 'removed' | 'failed'> {
-      const ref = { repo: pr.repo, number: pr.number, prOnly: !manual }
-      const current = await orca.plugin.request('pr.read', ref, { timeoutMs: 120000 })
-      if (current.merged || current.closed) return 'removed'
-      let fresh: MappedPr = { ...pr, ...current.pr, behind: current.pr.behind }
-      let method = approved?.method ?? prefs.mergeMethod
-      const same = approved?.sha === fresh.sha
-      if (
-        !current.facts.ok ||
-        !canMergeWithoutDialog(fresh, current.facts.value, method, same ? approved?.facts : undefined) ||
-        (prefs.askBeforeMerging && !same)
-      ) {
-        const choice = await new Promise<typeof approved>(
-          (resolve, reject) =>
-            void dialog(
-              fresh,
-              false,
-              (m, warnings, live) => {
-                fresh = live
-                resolve({
-                  method: m,
-                  sha: fresh.sha ?? '',
-                  facts: { warnings, behind: fresh.behind, mergeable: fresh.mergeable },
-                })
-              },
-              () => resolve(undefined),
-            ).catch(reject),
-        )
-        if (!choice) return 'removed'
-        approved = choice
-        method = choice.method
+    async function attempt(manual: boolean): Promise<'merged' | 'removed' | AttemptFailure> {
+      let step: MergeStep = 'PR read'
+      try {
+        const ref = { repo: pr.repo, number: pr.number, prOnly: !manual }
+        const current = await orca.plugin.request('pr.read', ref, requestOptions)
+        if ('ok' in current) return fromFailure(current, step)
+        if (current.merged || current.closed) return 'removed'
+        let fresh: MappedPr = { ...pr, ...current.pr, behind: current.pr.behind }
+        let method = approved?.method ?? prefs.mergeMethod
+        const same = approved?.sha === fresh.sha
+        if (
+          !current.facts.ok ||
+          !canMergeWithoutDialog(fresh, current.facts.value, method, same ? approved?.facts : undefined) ||
+          (prefs.askBeforeMerging && !same)
+        ) {
+          const choice = await new Promise<typeof approved>(
+            (resolve, reject) =>
+              void dialog(
+                fresh,
+                false,
+                (m, warnings, live) => {
+                  fresh = live
+                  resolve({
+                    method: m,
+                    sha: fresh.sha ?? '',
+                    facts: { warnings, behind: fresh.behind, mergeable: fresh.mergeable },
+                  })
+                },
+                () => resolve(undefined),
+              ).catch(reject),
+          )
+          if (!choice) return 'removed'
+          approved = choice
+          method = choice.method
+        }
+        step = 'merge'
+        let started = false
+        const completed = new Promise<boolean>((resolve) => {
+          progress = (event) => {
+            started = true
+            if (event.state === 'failed') resolve(false)
+            else if (event.step === 'merge' && event.state === 'done') resolve(true)
+          }
+        })
+        let failure: AttemptFailure
+        try {
+          const result = await orca.plugin.request(
+            'pr.merge',
+            { ...ref, method, sha: fresh.sha ?? '', updated: fresh.updated },
+            requestOptions,
+          )
+          if (result.ok && (await completed)) {
+            await land(fresh)
+            return 'merged'
+          }
+          failure = result.ok
+            ? {
+                step,
+                short: 'merge not confirmed',
+                full: 'GitHub accepted the merge request but did not confirm the merge. Refresh the board to check.',
+              }
+            : fromFailure(result, started ? 'merge' : 'preflight')
+        } catch (err) {
+          failure = fromThrown(err, step, requestTimeoutSeconds)
+        } finally {
+          progress = undefined
+        }
+        const reread = await orca.plugin.request('pr.read', ref, requestOptions).catch(() => undefined)
+        return reread && !('ok' in reread) && (reread.merged || reread.closed) ? 'removed' : failure
+      } catch (err) {
+        return fromThrown(err, step, requestTimeoutSeconds)
       }
-      const completed = new Promise<boolean>((resolve) => {
-        finalStep = resolve
-      })
-      const result = await orca.plugin.request(
-        'pr.merge',
-        { ...ref, method, sha: fresh.sha ?? '', updated: fresh.updated },
-        { timeoutMs: 120000 },
-      )
-      // Preflight rejections return directly; accepted requests post the final step before replying.
-      if (result.ok && (await completed)) {
-        await land(fresh)
-        return 'merged'
-      }
-      const reread = await orca.plugin.request('pr.read', ref, { timeoutMs: 120000 })
-      return reread.merged || reread.closed ? 'removed' : 'failed'
     }
     async function run(manual: boolean): Promise<MergeResult | undefined> {
       const key = prKey(pr)
       active = key
-      node.querySelector('button')?.remove()
+      node.querySelector('.rt')?.remove()
       for (let i = 0; ; i++) {
         state('run', 'merging', '')
         const bounds = node.getBoundingClientRect(),
           viewport = body.getBoundingClientRect()
         if (bounds.top < viewport.top) body.scrollTop += bounds.top - viewport.top
         else if (bounds.bottom > viewport.bottom) body.scrollTop += bounds.bottom - viewport.bottom
-        const result = await attempt(manual).catch(() => 'failed' as const)
-        if (result !== 'failed') {
+        const result = await attempt(manual)
+        if (typeof result === 'string') {
           failed.delete(key)
           if (result === 'merged') {
+            errors.line.remove()
+            errors.details.remove()
             merged++
             node.style.height = node.offsetHeight + 'px'
             state('merged', 'merged', '✓')
@@ -139,6 +178,7 @@ export function mergeQueue(
           node.remove()
           return result === 'merged' ? { pr, result: manual ? 'merged (manual retry)' : 'merged' } : undefined
         }
+        attempts.push({ n: attempts.length + 1, at: new Date(), ...result })
         const seconds = waits[i]
         if (manual || seconds === undefined) break
         for (let remaining = seconds; remaining; remaining--) {
@@ -148,6 +188,8 @@ export function mergeQueue(
       }
       failed.add(key)
       state('fail', manual ? 'failed again' : 'failed after 2 retries', '!')
+      errors.update(attempts)
+      text.append(errors.line)
       node.append(
         button(
           'Retry',
@@ -164,6 +206,7 @@ export function mergeQueue(
           },
           'rt',
         ),
+        errors.details,
       )
       return { pr, result: 'failed' }
     }

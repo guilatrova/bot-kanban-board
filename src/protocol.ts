@@ -48,6 +48,7 @@ declare module 'orca' {
     'pr.read': {
       input: { repo: string; number: number; prOnly?: boolean }
       output:
+        | Failure
         | { merged: false; closed: true }
         | { merged: true; closed?: false }
         | { merged: false; closed?: false; pr: PullRequest & { behind?: string }; facts: Source<RepositoryFacts> }

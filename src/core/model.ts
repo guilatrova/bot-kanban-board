@@ -4,6 +4,9 @@ export interface SourceState {
 }
 export type Failure = {
   status?: number
+  detail?: string
+  kind?: 'timeout' | 'network'
+  timeoutSeconds?: number
   resetAt?: number
   rateLimited?: boolean
   ok: false

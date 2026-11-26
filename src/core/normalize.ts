@@ -97,6 +97,8 @@ export function workspaces(data: unknown, computer: string): Workspace[] {
       bot: str(w, 'bot'),
       name: str(w, 'displayName'),
       repo: str(w, 'repo'),
+      remote: null,
+      path: opt(w.path),
       branch: opt(w.branch)?.replace(/^refs\/heads\//, '') ?? null,
       home: w.botHome === true ? opt(w.path) : opt(w.botHome),
     }))

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { applyIncremental, syncMode, FULL_SYNC_MS, type SyncRow } from '../src/core/pr-sync'
 import sample from './fixtures/board.json'
 import { botOwners, bots, unpairedComputers, items, pullRequest } from '../src/core/normalize'
-import { mapPrs } from '../src/core/map-prs'
+import { githubRepo, mapPrs, owners } from '../src/core/map-prs'
 import { allView, buildBoard, toggleBot } from '../src/core/board'
 import { botKey, type Bot, type Computer, type Workspace } from '../src/core/model'
 const bot: Bot = { ...sample.bot, computer: 'local', home: null }
@@ -14,6 +14,8 @@ const workspace: Workspace = {
   bot: bot.name,
   name: 'Marker',
   repo: 'sample',
+  path: null,
+  remote: null,
   branch: 'marker',
   home: null,
 }
@@ -91,6 +93,27 @@ describe('normalize', () => {
   })
 })
 describe('mapping', () => {
+  it.each([
+    ['git@github.com:Owner/Repo.git', 'Owner/Repo'],
+    ['ssh://git@github.com/Owner/Repo', 'Owner/Repo'],
+    ['https://github.com/Owner/Repo.git/', 'Owner/Repo'],
+    ['https://github.com/Owner/Repo', 'Owner/Repo'],
+    ['https://user@github.com/Owner/Repo', 'Owner/Repo'],
+    ['https://gitlab.com/Owner/Repo.git', null],
+    ['invalid', null],
+  ])('parses the GitHub repository from %s', (url, expected) => {
+    expect(githubRepo(url!)).toBe(expected)
+  })
+  it.each(['guilatrova/bot-kanban-board', 'Guilatrova/Bot-Kanban-Board'])(
+    'maps a renamed project by remote %s',
+    (remote) => {
+      const w = { ...workspace, repo: 'orca-bots-board', remote }
+      expect(owners({ ...pr, repo: 'guilatrova/bot-kanban-board' }, [], [w])).toMatchObject({
+        how: 'branch',
+        workspaces: [w],
+      })
+    },
+  )
   it('prefers direct references and keeps all matching Items', () => {
     const result = mapPrs([pr], [item, { ...item, number: 8 }, { ...item, text: 'sample#42' }], [workspace])[0]
     expect(result?.how).toBe('item')

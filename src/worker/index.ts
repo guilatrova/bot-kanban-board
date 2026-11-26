@@ -34,12 +34,13 @@ export default async function activate(orca: OrcaWorkerApi) {
         error: null,
         focus: false,
       }
-  const { write, logged } = failureLog(undefined, (message) => orca.log(message))
+  const { write, logged, loggedStorage } = failureLog(undefined, (message) => orca.log(message))
   const report = (error: unknown) => {
     orca.log(String(error))
     void write({ step: 'plugin', error })
   }
-  const saved = savedBoard(orca.storage, data, report)
+  const storage = loggedStorage(orca)
+  const saved = savedBoard(storage, data, report)
   if (!demo) await Promise.all([saved.load('orca'), saved.load('github')])
   const landed = new Map<string, MergedPr>()
   function removeOpen(key: string) {
@@ -59,7 +60,8 @@ export default async function activate(orca: OrcaWorkerApi) {
   const closingPrs = new Set<string>()
   const busy = (key: string) => closingPrs.has(key) || data.running?.includes(key)
   const path = async (key: string) => String((await orca.settings.get(key)) || '')
-  const avatar = avatars(orca.storage)
+  const avatar = avatars(storage, (error) => write({ step: 'avatar', error }))
+  if (!demo) await avatar.clearOversized().catch(report)
   const fileCache = new Map<string, string>()
   let postTimer: ReturnType<typeof setTimeout> | undefined
   function publish() {
@@ -69,7 +71,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       orca.panels.post('board.changed', null)
     }, 250)
   }
-  const evaluateBells = await notifications(orca, data, publish)
+  const evaluateBells = await notifications(orca, data, publish, storage)
   let itemJob: Promise<void> | null = null,
     prJob: Promise<void | Failure> | null = null
   let previousItems = data.sources.orca

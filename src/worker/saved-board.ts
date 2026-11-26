@@ -1,9 +1,20 @@
+import { bodyIssueRefs } from '../core/normalize'
+import { maxOpenPrs } from '../core/pr-sync'
+import type { IssueRef } from '../core/model'
 import { isChunkRecord, readChunks, writeChunks, type ChunkRecord } from './chunked-storage'
 import type { StorageApi } from 'orca'
 import type { Snapshot } from '../protocol'
 
 type SourceName = keyof Snapshot['sources']
 type Manifest = ChunkRecord & { version: 1; at: number }
+
+function migratePr<T extends { repo: string; mentions?: IssueRef[] }>(pr: T & { body?: string }): T {
+  if (typeof pr.body === 'string') {
+    pr.mentions = bodyIssueRefs(pr.body, pr.repo)
+    delete pr.body
+  }
+  return pr
+}
 
 function isManifest(value: unknown): value is Manifest {
   return (
@@ -39,7 +50,10 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
         )
           return
         data.prs = saved.prs
-        data.merged = saved.merged
+          .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))
+          .slice(0, maxOpenPrs)
+          .map(migratePr)
+        data.merged = saved.merged.map(migratePr)
         data.repos = saved.repos
         data.total = saved.total
         if (
@@ -49,7 +63,7 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
           Number.isFinite(Date.parse(saved.fullSyncedAt ?? ''))
         ) {
           data.login = saved.login
-          data.allOpenLoaded = saved.allOpenLoaded
+          data.allOpenLoaded = saved.allOpenLoaded && saved.total <= maxOpenPrs
           data.syncedAt = saved.syncedAt
           data.fullSyncedAt = saved.fullSyncedAt
         }

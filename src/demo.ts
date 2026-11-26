@@ -104,8 +104,8 @@ export function demoBoard(state: string | null = null) {
         head: 'calendar',
         base: pr.head,
         draft: true,
-        body: '',
         closes: [],
+        mentions: [],
       },
     ],
     repos: {

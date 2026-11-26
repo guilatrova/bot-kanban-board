@@ -1,6 +1,6 @@
 import type { Failure } from './model'
 
-export type MergeStep = 'preflight' | 'merge' | 'PR read'
+export type MergeStep = 'preflight' | 'merge' | 'PR read' | 'merge assessment'
 export interface MergeAttemptError {
   n: number
   at: Date
@@ -18,16 +18,19 @@ function timeout(step: MergeStep, seconds: number): AttemptFailure {
     full: 'GitHub did not answer within ' + seconds + ' seconds.',
   }
 }
-function pluginError(step: MergeStep): AttemptFailure {
-  return {
-    step,
-    short: 'board plugin error',
-    full: 'The board plugin refused the request. Try again; if it keeps failing, reload the board.',
-  }
-}
-export function fromThrown(err: unknown, step: MergeStep, timeoutSeconds: number): AttemptFailure {
-  const code = err && typeof err === 'object' && 'code' in err ? err.code : err
-  return code === 'timeout' ? timeout(step, timeoutSeconds) : pluginError(step)
+export function fromThrown(
+  err: unknown,
+  step: MergeStep,
+  timeoutSeconds: number,
+  rejection?: { code: string | null },
+): AttemptFailure {
+  const message = err instanceof Error ? err.message : String(err)
+  const failure =
+    rejection?.code === 'timeout' || err === 'timeout'
+      ? timeout(step, timeoutSeconds)
+      : { step, short: message, full: message }
+  if (rejection) failure.full += '\n' + JSON.stringify(rejection, null, 2)
+  return failure
 }
 export function fromFailure(f: Failure, step: MergeStep): AttemptFailure {
   const full = f.detail ?? f.message
@@ -48,12 +51,6 @@ export function fromFailure(f: Failure, step: MergeStep): AttemptFailure {
   if (f.kind === 'timeout' && f.timeoutSeconds !== undefined) return timeout(step, f.timeoutSeconds)
   if (f.kind === 'network')
     return { step, short: 'network error', full: 'Could not reach GitHub. Check the internet connection.' }
-  if (
-    /^[A-Z][A-Z_0-9]*$|\b[A-Z]+_[A-Z_]+\b|\bE[A-Z]{2,}\b|\bpr\.(read|merge)\b|^(?:Command failed|TypeError:|Error:|SyntaxError:|spawn )/m.test(
-      full,
-    )
-  )
-    return pluginError(step)
   return { step, short, full }
 }
 export function attemptLabel(a: AttemptFailure) {

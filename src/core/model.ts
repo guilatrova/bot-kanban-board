@@ -83,7 +83,6 @@ export interface PullRequest {
   sha?: string
   head: string
   base: string
-  body: string
   updated: string
   additions: number
   deletions: number
@@ -91,6 +90,7 @@ export interface PullRequest {
   mergeable: string
   checks: string | null
   closes: IssueRef[]
+  mentions: IssueRef[]
 }
 export interface MappedPr extends PullRequest {
   behind?: string

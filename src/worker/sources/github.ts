@@ -1,4 +1,4 @@
-import { applyIncremental, syncMode, type SyncRow } from '../../core/pr-sync'
+import { applyIncremental, maxOpenPrs, syncMode, type SyncRow } from '../../core/pr-sync'
 import { mergedToday, mergeMethods, type RepositoryFacts } from '../../core/merge'
 import type { MergeInput, Progress, Snapshot } from '../../protocol'
 import { prKey, type PullRequest, type Source } from '../../core/model'
@@ -40,7 +40,13 @@ function syncRow(value: unknown): SyncRow {
   const pr = pullRequest(raw)
   return state === 'MERGED' ? { state, pr, mergedAt: str(raw, 'mergedAt') } : { state, pr }
 }
-async function searchPulls<T>(path: string, search: string, fields: string, normalize: (value: unknown) => T) {
+async function searchPulls<T>(
+  path: string,
+  search: string,
+  fields: string,
+  normalize: (value: unknown) => T,
+  limit = Infinity,
+) {
   const read = reader('gh', path)
   const found: T[] = []
   let total = 0,
@@ -69,9 +75,9 @@ async function searchPulls<T>(path: string, search: string, fields: string, norm
     found.push(...result.rows)
     total = result.total
     after = result.after
-    if (!after) break
+    if (!after || found.length >= limit) break
   }
-  return { found, total, after }
+  return { found: found.slice(0, limit), total, after }
 }
 async function repositoryFacts(path: string, prs: PullRequest[]) {
   const repos: Record<string, Source<RepositoryFacts>> = {}
@@ -93,7 +99,7 @@ export function github(
     const login = logins.get(path) ?? (await read(['api', 'user'], (v) => str(obj(v), 'login')))
     logins.set(path, login)
     const syncedAt = now.toISOString()
-    if (syncMode(state, { now, login, manual }) === 'incremental') {
+    if (state.allOpenLoaded && syncMode(state, { now, login, manual }) === 'incremental') {
       const since = new Date(Date.parse(state.syncedAt!) - 120_000).toISOString()
       const changes = await searchPulls(
         path,
@@ -111,7 +117,7 @@ export function github(
           login,
           syncedAt,
           fullSyncedAt: state.fullSyncedAt,
-          allOpenLoaded: state.allOpenLoaded === true,
+          allOpenLoaded: next.total <= maxOpenPrs,
         }
       }
     }
@@ -119,7 +125,13 @@ export function github(
       found: prs,
       after,
       total,
-    } = await searchPulls(path, 'is:pr is:open user:' + login + ' sort:updated-desc', pullFields, pullRequest)
+    } = await searchPulls(
+      path,
+      'is:pr is:open user:' + login + ' sort:updated-desc',
+      pullFields,
+      pullRequest,
+      maxOpenPrs,
+    )
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const [merged, repos] = await Promise.all([
       source('gh api graphql', () =>

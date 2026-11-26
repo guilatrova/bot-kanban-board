@@ -1,3 +1,4 @@
+import { panelRequest, PanelError, recentCalls } from './panel-request'
 import type { Progress } from '../src/protocol'
 import {
   fromFailure,
@@ -46,6 +47,9 @@ export function mergeQueue(
   orca.plugin.on('merge.progress', (event) => {
     if (event.key === active) progress?.(event)
   })
+  function rejected(err: unknown, step: MergeStep): AttemptFailure {
+    return fromThrown(err, step, requestTimeoutSeconds, err instanceof PanelError ? err.rejection : undefined)
+  }
   function totals() {
     busy = false
     active = ''
@@ -82,8 +86,9 @@ export function mergeQueue(
       let step: MergeStep = 'PR read'
       try {
         const ref = { repo: pr.repo, number: pr.number, prOnly: !manual }
-        const current = await orca.plugin.request('pr.read', ref, requestOptions)
+        const current = await panelRequest('pr.read', ref, requestOptions)
         if ('ok' in current) return fromFailure(current, step)
+        step = 'merge assessment'
         if (current.merged || current.closed) return 'removed'
         let fresh: MappedPr = { ...pr, ...current.pr, behind: current.pr.behind }
         let method = approved?.method ?? prefs.mergeMethod
@@ -124,7 +129,7 @@ export function mergeQueue(
         })
         let failure: AttemptFailure
         try {
-          const result = await orca.plugin.request(
+          const result = await panelRequest(
             'pr.merge',
             { ...ref, method, sha: fresh.sha ?? '', updated: fresh.updated },
             requestOptions,
@@ -141,15 +146,23 @@ export function mergeQueue(
               }
             : fromFailure(result, started ? 'merge' : 'preflight')
         } catch (err) {
-          failure = fromThrown(err, step, requestTimeoutSeconds)
+          failure = rejected(err, step)
         } finally {
           progress = undefined
         }
-        const reread = await orca.plugin.request('pr.read', ref, requestOptions).catch(() => undefined)
-        if (reread && 'ok' in reread) return fromFailure(reread, 'PR read')
-        return reread && (reread.merged || reread.closed) ? 'removed' : failure
+        try {
+          const reread = await panelRequest('pr.read', ref, requestOptions)
+          if ('ok' in reread) {
+            const readFailure = fromFailure(reread, 'PR read')
+            return { ...readFailure, full: failure.full + '\nPR read: ' + readFailure.full }
+          }
+          return reread.merged || reread.closed ? 'removed' : failure
+        } catch (err) {
+          const readFailure = rejected(err, 'PR read')
+          return { ...readFailure, full: failure.full + '\nPR read: ' + readFailure.full }
+        }
       } catch (err) {
-        return fromThrown(err, step, requestTimeoutSeconds)
+        return rejected(err, step)
       }
     }
     async function run(manual: boolean): Promise<MergeResult | undefined> {
@@ -179,7 +192,9 @@ export function mergeQueue(
           node.remove()
           return result === 'merged' ? { pr, result: manual ? 'merged (manual retry)' : 'merged' } : undefined
         }
-        attempts.push({ n: attempts.length + 1, at: new Date(), ...result })
+        const calls = recentCalls()
+        const full = result.full + '\nPanel calls in the last 10 s: ' + calls.length + ' (' + calls.join(', ') + ')'
+        attempts.push({ n: attempts.length + 1, at: new Date(), ...result, full })
         const seconds = waits[i]
         if (manual || seconds === undefined) break
         for (let remaining = seconds; remaining; remaining--) {

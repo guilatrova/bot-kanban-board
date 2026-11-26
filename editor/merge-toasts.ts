@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import type { MergePreferences } from '../src/core/merge'
 import { prKey, type MappedPr } from '../src/core/model'
 import { button, el } from './dom'
@@ -35,7 +36,7 @@ export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement
       body: results.map((r) => prKey(r.pr) + ': ' + r.result + ' ' + r.pr.url).join('\n'),
     }
     async function send(retry: boolean) {
-      const ok = await orca.plugin.request('bot.tell', message, { timeoutMs: 120000 }).catch(() => false)
+      const ok = await panelRequest('bot.tell', message, { timeoutMs: 120000 }).catch(() => false)
       if (ok) {
         heading.textContent = 'Told ' + bot + (batch ? ' about the batch' : '')
         detail.textContent = batch ? 'One message for the whole batch' : 'One message'

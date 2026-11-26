@@ -12,3 +12,4 @@ jobs:
       - run: bash scripts/host-types.sh
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: git diff --exit-code -- src/version.ts

@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import {
   checksLabel,
   mergeableLabel,
@@ -59,7 +60,7 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
             busy = true
             actions.inert = true
             try {
-              const result = await orca.plugin.request('pr.close', { repo: pr.repo, number: pr.number })
+              const result = await panelRequest('pr.close', { repo: pr.repo, number: pr.number })
               if (!result.ok) notice(describeFailure(result))
             } finally {
               busy = false

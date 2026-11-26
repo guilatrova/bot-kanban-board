@@ -405,6 +405,8 @@ pre {
 }
 .lane.is-stale article,
 .lane.is-stale .merged-card {
+  animation: none;
+  transition: none;
   opacity: 0.5;
   pointer-events: none;
 }

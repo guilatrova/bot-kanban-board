@@ -250,6 +250,7 @@ export function demoBoard(state: string | null = null) {
     })
   if (state === 'signed-out') {
     data.prs = []
+    data.sources.github = { status: 'failed', at: 0 }
     data.prsAt = 0
     data.total = 0
     data.banner = 'GitHub is signed out. Run gh auth login and refresh.'

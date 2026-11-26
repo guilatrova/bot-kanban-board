@@ -62,11 +62,15 @@ export default async function activate(orca: OrcaWorkerApi) {
   const evaluateBells = await notifications(orca, data, publish)
   let itemJob: Promise<void> | null = null,
     prJob: Promise<void> | null = null
+  let previousItems = data.sources.orca
+  let previousPrs = data.sources.github
   function refreshItems() {
-    return (itemJob ??= refreshItemData(orca, data, saved, avatar, evaluateBells, publish)
+    if (itemJob) return itemJob
+    previousItems = data.sources.orca
+    return (itemJob = refreshItemData(orca, data, saved, avatar, evaluateBells, publish)
       .catch((error) => {
         report(error)
-        data.sources.orca.status = 'failed'
+        data.sources.orca = { ...data.sources.orca, status: 'failed' }
         publish()
       })
       .finally(() => {
@@ -87,8 +91,9 @@ export default async function activate(orca: OrcaWorkerApi) {
   function refreshPrs() {
     if (limitedUntil > Date.now()) return planPoll()
 
-    let prReadComplete = false
-    return (prJob ??= (async () => {
+    if (prJob) return prJob
+    previousPrs = data.sources.github
+    return (prJob = (async () => {
       const result = await github(await path('ghPath'))
       const problem = !result.ok
         ? result
@@ -96,7 +101,6 @@ export default async function activate(orca: OrcaWorkerApi) {
           ? result.value.merged
           : Object.values(result.value.repos).find((repo) => !repo.ok)
       if (result.ok && !problem) {
-        prReadComplete = true
         for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
         data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
         data.repos = result.value.repos
@@ -115,7 +119,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       }
       if (problem) {
         data.error = problem
-        data.sources.github.status = 'failed'
+        data.sources.github = { ...data.sources.github, status: 'failed' }
         const next = retry(problem, ++failures, Date.now())
         retryAt = next.at
         limitedUntil = next.limited ? retryAt : 0
@@ -130,7 +134,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     })()
       .catch((error) => {
         report(error)
-        if (!prReadComplete) data.sources.github.status = 'failed'
+        if (data.sources.github === previousPrs) data.sources.github = { ...data.sources.github, status: 'failed' }
         publish()
       })
       .finally(async () => {
@@ -140,12 +144,11 @@ export default async function activate(orca: OrcaWorkerApi) {
   }
   function refresh(opening = false) {
     if (demo) return
-    if (opening && !itemJob) data.sources.orca.status = 'stale'
+    if (opening && (!itemJob || data.sources.orca === previousItems)) data.sources.orca.status = 'stale'
     void refreshItems().catch(report)
-    if (visible.size) {
-      if (opening && !prJob && limitedUntil <= Date.now()) data.sources.github.status = 'stale'
-      void refreshPrs().catch(report)
-    }
+    if (opening && (!prJob || data.sources.github === previousPrs) && limitedUntil <= Date.now())
+      data.sources.github.status = 'stale'
+    if (visible.size) void refreshPrs().catch(report)
   }
   orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id

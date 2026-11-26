@@ -31,7 +31,7 @@ export async function refreshItemData(
     (c) => !c.unpaired && (!c.source.ok || c.warning || c.source.value.bots.some((b) => b.warning)),
   )
   if (broken) {
-    data.sources.orca.status = 'failed'
+    data.sources.orca = { ...data.sources.orca, status: 'failed' }
     publish()
     await orca.host.call('statusBar.update', { id: 'needs-you', text: 'Needs you ?', tone: 'warning' })
     return

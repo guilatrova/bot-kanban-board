@@ -1,14 +1,10 @@
 import { appendFile, mkdir, readdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inspect } from 'node:util'
+import { localDate } from '../core/merge'
 import { pluginDataFolder } from './board-file'
 
 type Entry = { step: string; repo?: string; number?: number; error: unknown }
-
-function localDay(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
-}
 
 function errorText(error: unknown) {
   if (error instanceof Error) return error.stack || error.message
@@ -21,7 +17,7 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
   async function prune(now: Date) {
     const cutoff = new Date(now)
     cutoff.setDate(cutoff.getDate() - 7)
-    const oldest = localDay(cutoff)
+    const oldest = localDate(cutoff)
     await mkdir(logs, { recursive: true })
     for (const entry of await readdir(logs, { withFileTypes: true })) {
       if (entry.isFile() && /^\d{4}-\d{2}-\d{2}\.log$/.test(entry.name) && entry.name.slice(0, 10) < oldest)
@@ -41,7 +37,7 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
     const now = new Date()
     pending = pending
       .then(async () => {
-        const day = localDay(now)
+        const day = localDate(now)
         if (lastDay !== day) {
           await prune(now)
           lastDay = day
@@ -57,6 +53,7 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
   function logged<I extends { repo: string; number: number } | { key: string }, R extends object>(
     initialStep: string,
     run: (input: I, setStep: (step: string) => void) => Promise<R>,
+    failureOf: (result: R) => unknown = (result) => ('ok' in result && !result.ok ? result : undefined),
   ) {
     return async (input: I) => {
       let step = initialStep
@@ -65,7 +62,8 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
         const result = await run(input, (value) => {
           step = value
         })
-        if ('ok' in result && !result.ok) await write({ step, ...ref, error: result })
+        const error = failureOf(result)
+        if (error) await write({ step, ...ref, error })
         return result
       } catch (error) {
         await write({ step, ...ref, error })

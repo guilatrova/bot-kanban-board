@@ -1,7 +1,7 @@
 import type { PluginRequests } from 'orca'
 import type { Snapshot } from '../protocol'
 import type { MergedPr } from '../core/merge'
-import { prKey } from '../core/model'
+import { prKey, type Failure } from '../core/model'
 import { stackOrder } from '../core/stacks'
 import { readRepository, readPull } from './sources/github'
 import { source } from './sources/read'
@@ -11,7 +11,7 @@ export async function readBoardPr(
   input: PluginRequests['pr.read']['input'],
   data: Snapshot,
   demo: boolean,
-  refreshPrs: () => Promise<void>,
+  refreshPrs: () => Promise<void | Failure>,
   recordMerged: (row: MergedPr) => void,
 ): Promise<PluginRequests['pr.read']['output']> {
   const { repo, number } = input
@@ -31,20 +31,11 @@ export async function readBoardPr(
     const index = data.prs.findIndex((p) => prKey(p) === prKey(input))
     if (index >= 0) data.prs[index] = live.pr
   } else if (!demo) {
-    try {
-      await refreshPrs()
-    } catch (error) {
-      return {
-        ok: false as const,
-        command: 'Refresh PRs',
-        message: error instanceof Error ? error.message : String(error),
-        next: 'Refresh the board and try again.',
-      }
-    }
+    const failure = await refreshPrs()
+    if (failure) return failure
   }
   const pr = live?.pr ?? data.prs.find((p) => prKey(p) === prKey(input))
   const facts = data.error || data.repos[input.repo]
-  if (facts && !facts.ok) return facts
   if (!pr || !facts)
     return {
       ok: false as const,
@@ -54,4 +45,19 @@ export async function readBoardPr(
     }
   const ordered = stackOrder([pr, ...data.prs.filter((p) => prKey(p) !== prKey(input))])
   return { merged: false as const, pr: ordered.find((p) => prKey(p) === prKey(input))!, facts }
+}
+
+export function readFailureToLog(result: PluginRequests['pr.read']['output']) {
+  if ('ok' in result) return result.command === 'Refresh PRs' ? undefined : result
+  if ('facts' in result && !result.facts.ok) return result.facts
+}
+
+export function refreshFailure(error: unknown, report: (error: unknown) => void): Failure {
+  report(error)
+  return {
+    ok: false,
+    command: 'Refresh PRs',
+    message: error instanceof Error ? error.message : String(error),
+    next: 'Refresh the board and try again.',
+  }
 }

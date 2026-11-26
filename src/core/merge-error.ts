@@ -36,6 +36,8 @@ export function fromFailure(f: Failure, step: MergeStep): AttemptFailure {
     .split(/\r?\n/)
     .map((line) => line.trim())
   let short = f.message.trim().split(/\r?\n/)[0] ?? ''
+  if (step === 'PR read')
+    return { step, status: f.status, short: f.command === 'PR read' ? short : 'GitHub failed: ' + short, full }
   if (f.status) {
     if (/^Repository rule violations found|^Validation failed\b|\b(?:found|failed)[.:]?$/i.test(first)) {
       const violation = rest.find((line) => line && !/^https?:\/\//i.test(line))
@@ -47,7 +49,6 @@ export function fromFailure(f: Failure, step: MergeStep): AttemptFailure {
   if (f.kind === 'network')
     return { step, short: 'network error', full: 'Could not reach GitHub. Check the internet connection.' }
   if (
-    f.command !== 'PR read' &&
     /^[A-Z][A-Z_0-9]*$|\b[A-Z]+_[A-Z_]+\b|\bE[A-Z]{2,}\b|\bpr\.(read|merge)\b|^(?:Command failed|TypeError:|Error:|SyntaxError:|spawn )/m.test(
       full,
     )

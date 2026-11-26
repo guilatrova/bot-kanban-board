@@ -1,12 +1,12 @@
 import { failureLog } from './failure-log'
-import { readBoardPr } from './read-board-pr'
+import { readBoardPr, readFailureToLog, refreshFailure } from './read-board-pr'
 import { mergePreflight } from './merge-preflight'
 import { savedBoard } from './saved-board'
 import { serveSnapshots } from './snapshot'
 import { retry } from './polling'
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot, Progress } from '../protocol'
-import { prKey } from '../core/model'
+import { prKey, type Failure } from '../core/model'
 import { refreshItemData } from './refresh-items'
 import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
 import { github, files, mergePr, closePr } from './sources/github'
@@ -71,7 +71,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   }
   const evaluateBells = await notifications(orca, data, publish)
   let itemJob: Promise<void> | null = null,
-    prJob: Promise<void> | null = null
+    prJob: Promise<void | Failure> | null = null
   let previousItems = data.sources.orca
   let previousPrs = data.sources.github
   function refreshItems() {
@@ -96,12 +96,13 @@ export default async function activate(orca: OrcaWorkerApi) {
     const interval = Math.max(10, Number(await orca.settings.get('prSeconds')) || 90) * 1000
     clearTimeout(timer)
     if (visible.size && !demo)
-      timer = setTimeout(() => void refreshPrs().catch(report), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
+      timer = setTimeout(() => void refreshPrs(), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
   }
-  function refreshPrs(manual = false): Promise<void> {
-    if (limitedUntil > Date.now()) return planPoll()
+  const reportRefreshFailure = (error: unknown) => refreshFailure(error, report)
+  function refreshPrs(manual = false): Promise<void | Failure> {
+    if (limitedUntil > Date.now()) return planPoll().catch(reportRefreshFailure)
 
-    if (prJob) return manual ? prJob.catch(report).then(() => refreshPrs(true)) : prJob
+    if (prJob) return manual ? prJob.then(() => refreshPrs(true)) : prJob
     previousPrs = data.sources.github
     return (prJob = (async () => {
       const result = await github(await path('ghPath'), data, new Date(), manual)
@@ -148,7 +149,8 @@ export default async function activate(orca: OrcaWorkerApi) {
       .finally(async () => {
         prJob = null
         await planPoll()
-      }))
+      })
+      .catch(reportRefreshFailure))
   }
   function refresh(opening = false, manual = false) {
     if (demo) return
@@ -156,14 +158,14 @@ export default async function activate(orca: OrcaWorkerApi) {
     void refreshItems().catch(report)
     if (opening && (!prJob || data.sources.github === previousPrs) && limitedUntil <= Date.now())
       data.sources.github.status = 'stale'
-    if (opening || visible.size) void refreshPrs(manual).catch(report)
+    if (opening || visible.size) void refreshPrs(manual)
   }
   orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id
     if (shown) {
       const first = !visible.size
       visible.add(id)
-      if (!demo && first && !initial && limitedUntil <= Date.now()) await refreshPrs().catch(report)
+      if (!demo && first && !initial && limitedUntil <= Date.now()) await refreshPrs()
       else if (!prJob) await planPoll()
     } else {
       visible.delete(id)
@@ -174,7 +176,11 @@ export default async function activate(orca: OrcaWorkerApi) {
   serveSnapshots(orca, data, () => refresh(true))
   orca.panels.handle(
     'pr.read',
-    logged('PR read', async (input) => readBoardPr(await path('ghPath'), input, data, demo, refreshPrs, recordMerged)),
+    logged(
+      'PR read',
+      async (input) => readBoardPr(await path('ghPath'), input, data, demo, refreshPrs, recordMerged),
+      readFailureToLog,
+    ),
   )
   orca.panels.handle('board.refresh', async () => {
     if (demo) publish()
@@ -226,10 +232,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         return result
       } finally {
         closingPrs.delete(key)
-        void (async () => {
-          await prJob?.catch(report)
-          await refreshPrs()
-        })().catch(report)
+        void Promise.resolve(prJob).then(() => refreshPrs())
       }
     }),
   )
@@ -287,11 +290,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       } finally {
         data.running = data.running?.filter((k) => k !== key)
         publish()
-        if (!demo && !input.prOnly)
-          void (async () => {
-            await prJob?.catch(report)
-            await refreshPrs()
-          })().catch(report)
+        if (!demo && !input.prOnly) void Promise.resolve(prJob).then(() => refreshPrs())
       }
     }),
   )

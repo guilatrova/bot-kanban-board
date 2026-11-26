@@ -33,6 +33,8 @@ export interface Workspace {
   bot: string
   name: string
   repo: string
+  remote: string | null
+  path: string | null
   branch: string | null
   home: string | null
 }

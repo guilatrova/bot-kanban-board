@@ -1,5 +1,6 @@
 import { itemKey, type Computer, type Item } from '../../core/model'
 import { botOwners, bots, items, obj, rows, str, unpairedComputers, workers, workspaces } from '../../core/normalize'
+import { workspaceRemote } from './git'
 import { reader, source } from './read'
 export async function computers(
   path: string,
@@ -86,7 +87,11 @@ export async function computers(
           value: {
             closed,
             bots: resident,
-            workspaces: trees.ok ? trees.value.filter((w) => resident.some((b) => b.name === w.bot)) : [],
+            workspaces: trees.ok
+              ? await Promise.all(
+                  trees.value.filter((w) => resident.some((b) => b.name === w.bot)).map(workspaceRemote),
+                )
+              : [],
             items: byBot.flat(),
           },
         },

@@ -1,4 +1,11 @@
 import type { Item, Workspace, PullRequest, MappedPr, IssueRef } from './model'
+export function githubRepo(url: string): string | null {
+  const match =
+    /^(?:git@github\.com:|ssh:\/\/git@github\.com\/|https:\/\/(?:[^/@\s?#]+@)?github\.com\/)([\w-]+\/[\w.-]+?)(?:\.git)?\/?$/i.exec(
+      url.trim(),
+    )
+  return match?.[1] ?? null
+}
 export function repoMatch(a: string, b: string) {
   return a.toLowerCase() === (a.includes('/') ? b : b.split('/').pop())?.toLowerCase()
 }
@@ -17,7 +24,7 @@ export function owners(
   items: Item[],
   workspaces: Workspace[],
 ) {
-  const branches = workspaces.filter((w) => w.branch === pr.head && repoMatch(w.repo, pr.repo))
+  const branches = workspaces.filter((w) => w.branch === pr.head && repoMatch(w.remote ?? w.repo, pr.repo))
   const direct = items.filter((i) => mentions(i.text, pr, 'pull'))
   const issues = [...(pr.closes ?? []), ...(pr.mentions ?? [])]
   const matches = direct.length ? direct : items.filter((i) => issues.some((r) => mentions(i.text, r, 'issues')))

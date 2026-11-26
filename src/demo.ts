@@ -180,6 +180,8 @@ export function demoBoard(state: string | null = null) {
           name: head,
           bot: list[i % list.length]!.name,
           repo: pr.repo,
+          remote: null,
+          path: null,
           branch: head,
           home: null,
         })
@@ -203,6 +205,8 @@ export function demoBoard(state: string | null = null) {
           name: 'history',
           bot: 'Field bot 30',
           repo: pr.repo,
+          remote: null,
+          path: null,
           branch: 'merged-survey',
           home: null,
         })

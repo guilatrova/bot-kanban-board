@@ -14,6 +14,7 @@ export function dropZones(
   let draggedItem: Item | null = null
   function dragTarget(key: 'merged' | 'closed', on: boolean) {
     const col = columns.get(key)
+    if (on && col?.lane.classList.contains('is-stale')) return
     if (!on) col?.lane.querySelector('.over')?.classList.remove('over')
     col?.expandForDrag(on || (key === 'merged' && panel.classList.contains('on')))
     col?.lane.classList.toggle('target', on)
@@ -31,9 +32,11 @@ export function dropZones(
   function attach(key: Lane, lane: HTMLElement) {
     if (statuses.some((s) => s === key)) {
       lane.ondragover = (e) => {
+        if (lane.classList.contains('is-stale')) return
         if (draggedItem) e.preventDefault()
       }
       lane.ondrop = (e) => {
+        if (lane.classList.contains('is-stale')) return
         e.preventDefault()
         const item = draggedItem
         resetDrag()
@@ -48,6 +51,7 @@ export function dropZones(
         const zone = el('div', title, 'zone')
         zone.classList.toggle('danger', target === 'canceled' || target === 'close')
         zone.ondragover = (e) => {
+          if (lane.classList.contains('is-stale')) return
           if (key === 'closed' ? draggedItem : dragging.length && (target !== 'close' || dragging.length === 1)) {
             e.preventDefault()
             zone.classList.add('over')
@@ -59,6 +63,7 @@ export function dropZones(
           lane.classList.remove('drag-over')
         }
         zone.ondrop = (e) => {
+          if (lane.classList.contains('is-stale')) return
           e.preventDefault()
           const item = draggedItem,
             prs = dragging

@@ -1,9 +1,10 @@
+import { savedBoard } from './saved-board'
 import { serveSnapshots } from './snapshot'
 import { retry } from './polling'
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot, Progress } from '../protocol'
 import { prKey } from '../core/model'
-import { computers } from './sources/orca'
+import { refreshItemData } from './refresh-items'
 import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
 import { github, files, mergePr, closePr, readRepository, readPull } from './sources/github'
 import { stackOrder } from '../core/stacks'
@@ -13,13 +14,13 @@ import { avatars } from './avatars'
 import { notifications } from './bells'
 import { jump } from './jump'
 import { demoBoard, demoMerge } from '../demo'
-import { parseActions, moveState } from '../core/actions'
 export default async function activate(orca: OrcaWorkerApi) {
   const demo = (await orca.settings.get('demo')) === true
 
   const data: Snapshot = demo
     ? demoBoard()
     : {
+        sources: { orca: { status: 'stale', at: 0 }, github: { status: 'stale', at: 0 } },
         computers: [],
         prs: [],
         repos: {},
@@ -31,6 +32,9 @@ export default async function activate(orca: OrcaWorkerApi) {
         error: null,
         focus: false,
       }
+  const report = (e: unknown) => orca.log(String(e))
+  const saved = savedBoard(orca.storage, data, report)
+  if (!demo) await Promise.all([saved.load('orca'), saved.load('github')])
   const landed = new Map<string, MergedPr>()
   function recordMerged(row: MergedPr) {
     const key = prKey(row)
@@ -58,51 +62,20 @@ export default async function activate(orca: OrcaWorkerApi) {
   const evaluateBells = await notifications(orca, data, publish)
   let itemJob: Promise<void> | null = null,
     prJob: Promise<void> | null = null
+  let previousItems = data.sources.orca
+  let previousPrs = data.sources.github
   function refreshItems() {
-    return (itemJob ??= (async () => {
-      const { moves } = parseActions(await orca.storage.get('actions'))
-      const now = Date.now()
-      const closing = new Set(
-        Object.entries(moves)
-          .filter(
-            ([, move]) =>
-              (move.target === 'done' || move.target === 'canceled') && moveState(move, undefined, now) === 'pending',
-          )
-          .map(([key]) => key),
-      )
-      for (const bell of data.bells ?? []) if (bell.kind === 'item') closing.add(bell.id)
-      data.computers = await computers(
-        await path('orcaPath'),
-        closing,
-        (computer) => {
-          const position = data.computers.findIndex((previous) => previous.key === computer.key)
-          if (position < 0) data.computers.push(computer)
-          else data.computers[position] = computer
-          data.itemsAt = Date.now()
-          publish()
-        },
-        (message) => orca.log(message),
-      )
-      data.itemsAt = Date.now()
-      publish()
-      await evaluateBells({ items: data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])) })
-      await avatar.prune(data.computers)
-      const n = data.computers
-        .flatMap((c) => (c.source.ok ? c.source.value.items : []))
-        .filter((i) => i.status === 'needs_you').length
-      const unreachable = data.computers.filter((c) => !c.source.ok).length
-      const hasCount = data.computers.some((c) => c.key !== 'discovery' && c.source.ok)
-      const text = hasCount
-        ? 'Needs you ' + n + (unreachable ? ' · ' + unreachable + ' unreachable' : '')
-        : 'Needs you ?'
-      await orca.host.call('statusBar.update', {
-        id: 'needs-you',
-        text,
-        tone: hasCount ? (unreachable ? 'warning' : 'neutral') : 'danger',
+    if (itemJob) return itemJob
+    previousItems = data.sources.orca
+    return (itemJob = refreshItemData(orca, data, path, saved, avatar, evaluateBells, publish)
+      .catch((error) => {
+        report(error)
+        data.sources.orca = { ...data.sources.orca, status: 'failed' }
+        publish()
       })
-    })().finally(() => {
-      itemJob = null
-    }))
+      .finally(() => {
+        itemJob = null
+      }))
   }
   const visible = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | undefined,
@@ -118,24 +91,29 @@ export default async function activate(orca: OrcaWorkerApi) {
   function refreshPrs() {
     if (limitedUntil > Date.now()) return planPoll()
 
-    return (prJob ??= (async () => {
+    if (prJob) return prJob
+    previousPrs = data.sources.github
+    return (prJob = (async () => {
       const result = await github(await path('ghPath'))
-      if (result.ok) {
+      const search = result.ok ? result.value.merged : result
+      if (result.ok && search.ok) {
         for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
         data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
         data.repos = result.value.repos
-        const merged = result.value.merged
-        const history = merged.ok ? merged.value : data.merged
-        data.merged = mergedToday([...landed.values(), ...history.filter((pr) => !landed.has(prKey(pr)))])
+        data.merged = mergedToday([...landed.values(), ...search.value.filter((pr) => !landed.has(prKey(pr)))])
         data.total = result.value.total
         data.prsAt = Date.now()
+        data.sources.github = { status: 'fresh', at: data.prsAt }
         data.error = null
-        await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded && merged.ok })
+        publish()
+        await saved.save('github')
+        await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded })
         const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
         for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
-      } else data.error = result
-      const search = result.ok ? result.value.merged : result
+      }
       if (!search.ok) {
+        data.error = search
+        data.sources.github = { ...data.sources.github, status: 'failed' }
         const next = retry(search, ++failures, Date.now())
         retryAt = next.at
         limitedUntil = next.limited ? retryAt : 0
@@ -147,12 +125,25 @@ export default async function activate(orca: OrcaWorkerApi) {
         limitedUntil = 0
       }
       publish()
-    })().finally(async () => {
-      await planPoll()
-      prJob = null
-    }))
+    })()
+      .catch((error) => {
+        report(error)
+        if (data.sources.github === previousPrs) data.sources.github = { ...data.sources.github, status: 'failed' }
+        publish()
+      })
+      .finally(async () => {
+        prJob = null
+        await planPoll()
+      }))
   }
-  const refresh = () => Promise.all([refreshItems(), refreshPrs()])
+  function refresh(opening = false) {
+    if (demo) return
+    if (opening && (!itemJob || data.sources.orca === previousItems)) data.sources.orca.status = 'stale'
+    void refreshItems().catch(report)
+    if (opening && (!prJob || data.sources.github === previousPrs) && limitedUntil <= Date.now())
+      data.sources.github.status = 'stale'
+    if (opening || visible.size) void refreshPrs().catch(report)
+  }
   orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id
     if (shown) {
@@ -166,9 +157,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     }
     return null
   })
-  serveSnapshots(orca, data, async () => {
-    if (!demo) await Promise.all([refreshItems(), visible.size && refreshPrs()])
-  })
+  serveSnapshots(orca, data, () => refresh(true))
   orca.panels.handle('pr.read', async (input) => {
     const ghPath = await path('ghPath')
     const { repo, number } = input
@@ -191,7 +180,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   })
   orca.panels.handle('board.refresh', async () => {
     if (demo) publish()
-    else await refresh()
+    else refresh()
     return null
   })
   orca.panels.handle('avatar.get', async (input) => {
@@ -339,7 +328,6 @@ export default async function activate(orca: OrcaWorkerApi) {
     })
   if (demo) return
   let debounce: ReturnType<typeof setTimeout> | undefined
-  const report = (e: unknown) => orca.log(String(e))
   orca.events.on('agent.status.changed', () => {
     clearTimeout(debounce)
     debounce = setTimeout(() => void refreshItems().catch(report), 300)

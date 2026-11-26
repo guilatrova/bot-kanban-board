@@ -1,11 +1,11 @@
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Snapshot } from '../protocol'
-export function serveSnapshots(orca: OrcaWorkerApi, data: Snapshot, refresh: () => Promise<void>) {
+export function serveSnapshots(orca: OrcaWorkerApi, data: Snapshot, refresh: () => void) {
   const snapshots = new Map<string, string>()
   orca.panels.handle('board.get', async ({ index, fresh }, context) => {
     const id = context.panel.id
     if (index === 0) {
-      if (fresh) await refresh()
+      if (fresh) refresh()
       snapshots.set(id, JSON.stringify({ ...data, focus: fresh === true }))
     }
     const json = snapshots.get(id)

@@ -4,7 +4,6 @@ import { reader, source } from './read'
 export async function computers(
   path: string,
   closing: Set<string>,
-  onComputer: (computer: Computer) => void,
   warn: (message: string) => void,
 ): Promise<Computer[]> {
   const read = reader('orca', path)
@@ -36,13 +35,11 @@ export async function computers(
     rosters.map(async ({ target, env, roster }) => {
       if (!roster.ok) {
         const computer = { ...target, source: roster }
-        onComputer(computer)
         return computer
       }
       const resident = roster.value.filter((b) => owners.get(b.id) === target.key)
       if (!resident.length) {
         const computer: Computer = { ...target, source: { ok: true, value: { bots: [], workspaces: [], items: [] } } }
-        onComputer(computer)
         return computer
       }
       const trees = await source('orca worktree ps', () =>
@@ -94,7 +91,6 @@ export async function computers(
           },
         },
       }
-      onComputer(computer)
       return computer
     }),
   )

@@ -1,3 +1,5 @@
+import { bellToggle } from './bell-toggle'
+import { skeletonCard } from './loading'
 import { mergeToasts } from './merge-toasts'
 import { settings, type readMergeSettings } from './settings'
 import { land, mergedRow } from './merge-landing'
@@ -13,7 +15,7 @@ import type { Snapshot } from '../src/protocol'
 import { patch, el, button, age, badge, prPill, notice, labels } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
-import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
+import { laneKeys, makeLane, divider, type Lane } from './lanes'
 import { boardHeader } from './header'
 import type { Bell } from '../src/core/bells'
 type Row = Item | MappedPr
@@ -76,7 +78,7 @@ export function view(
     redraw,
   )
   function start(prs: MappedPr[]) {
-    if (queue.busy) return
+    if (queue.busy || snapshot?.sources.github.status !== 'fresh') return
     select.clear()
     void queue.start(prs).catch(notice)
   }
@@ -130,11 +132,13 @@ export function view(
       }
     const mergedColumn = columns.get('merged')!
     mergedColumn.expandForDrag(queue.panel.classList.contains('on') || mergedColumn.lane.classList.contains('target'))
-    select.go.disabled = queue.busy
-    actions.reconcile(
-      data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
-      Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
-    )
+    const githubReady = data.sources.github.status === 'fresh'
+    select.go.disabled = queue.busy || !githubReady
+    if (data.sources.orca.status === 'fresh')
+      actions.reconcile(
+        data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
+        Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
+      )
     const board = buildBoard(data.computers, data.prs, saved.current, data.merged)
     sleeping = board.columns.flatMap((c) => c.items.filter(actions.sleep))
     for (const c of board.columns) c.items = c.items.filter((i) => !actions.sleep(i))
@@ -161,7 +165,8 @@ export function view(
       const element = node
       const links = isItem ? prs.filter((p) => p.items.some((i) => itemKey(i) === key)) : row.items
       const merging = !isItem && !!data.running?.includes(key)
-      node.inert = merging
+      const stale = data.sources[isItem ? 'orca' : 'github'].status !== 'fresh'
+      node.inert = merging || stale
       node.classList.toggle('merging', merging)
       const signature = JSON.stringify([
         row,
@@ -175,19 +180,21 @@ export function view(
       ])
       const open = () => (isItem ? drawer.item(row, prs, trees, element) : drawer.pr(row, element))
       if (isItem) {
-        node.draggable = !closed
-        node.oncontextmenu = (e) => {
-          e.preventDefault()
-          const anchor = element.querySelector<HTMLElement>('.more')
-          if (!closed) actions.menu(row, anchor ?? element)
-        }
+        node.draggable = !closed && !stale
+        node.oncontextmenu = stale
+          ? null
+          : (e) => {
+              e.preventDefault()
+              const anchor = element.querySelector<HTMLElement>('.more')
+              if (!closed) actions.menu(row, anchor ?? element)
+            }
         node.ondragstart = (e) => {
           zones.item(row)
           e.dataTransfer?.setData('text/plain', key)
         }
         node.ondragend = zones.resetDrag
       } else {
-        node.draggable = !queue.busy
+        node.draggable = !queue.busy && !stale
         node.ondragstart = (e) => {
           if (queue.busy) {
             e.preventDefault()
@@ -233,18 +240,7 @@ export function view(
         node.append(meta, el('h3', row.title))
         if (!isItem) node.append(select.checkbox(key))
         if (!closed) {
-          const toggle = button(
-            '',
-            (e) => {
-              e.stopPropagation()
-              return orca.plugin.request('bell.set', { bell, on: !ringing })
-            },
-            'bell',
-          )
-          toggle.append(icon('M4 17h16l-2-3V9a6 6 0 0 0-12 0v5zM10 20a2 2 0 0 0 4 0'))
-          toggle.setAttribute('aria-label', 'Notify me')
-          toggle.setAttribute('aria-pressed', String(ringing))
-          meta.append(toggle)
+          meta.append(bellToggle(bell, ringing))
           if (ringing && data.notificationsOff)
             node.append(
               el(
@@ -300,6 +296,8 @@ export function view(
       return node
     }
     for (const [key, col] of columns) {
+      const source = data.sources[key === 'prs' || key === 'merged' ? 'github' : 'orca']
+      col.showSource(source)
       const { list } = col
       const column = board.columns.find((c) => c.status === key)
 
@@ -335,6 +333,7 @@ export function view(
             node = mergedRow(row)
             cards.set(key, node)
           }
+          node.inert = !githubReady
           node.querySelector('time')!.textContent = age(row.mergedAt)
           nodes.push(node)
         }
@@ -342,15 +341,15 @@ export function view(
         col.update(column.items.length, column.items)
         nodes = column.items.map(card)
       }
-      const reading = key === 'prs' || key === 'merged' ? !data.prsAt && !data.error : !data.itemsAt
-      patch(list, nodes.length ? nodes : reading ? [el('div', '', 'skeleton')] : [col.empty])
+      const reading = !source.at && source.status !== 'failed'
+      patch(list, reading ? [skeletonCard(prefs.compact, key === 'merged')] : nodes.length ? nodes : [col.empty])
     }
     for (const key of cards.keys())
       if (!alive.has(key)) {
         cards.delete(key)
         signatures.delete(key)
       }
-    select.draw(prs)
+    select.draw(githubReady ? prs : [])
     animate(alive)
     if (data.focus) {
       focus()

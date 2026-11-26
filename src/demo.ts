@@ -121,6 +121,7 @@ export function demoBoard(state: string | null = null) {
     merged: [],
     banner: null,
     total: 2,
+    sources: { orca: { status: 'fresh', at: Date.now() }, github: { status: 'fresh', at: Date.now() } },
     prsAt: Date.now(),
     itemsAt: Date.now(),
     error: null,
@@ -249,6 +250,7 @@ export function demoBoard(state: string | null = null) {
     })
   if (state === 'signed-out') {
     data.prs = []
+    data.sources.github = { status: 'failed', at: 0 }
     data.prsAt = 0
     data.total = 0
     data.banner = 'GitHub is signed out. Run gh auth login and refresh.'

@@ -67,8 +67,8 @@ wait for the reported reset or retry time, or 6 minutes without headers.
 The worker caches the login for the session and repository facts for 6 hours.
 
 Plugin storage holds views and filters, folded lanes, bells, pending status
-requests, local snoozes, avatar data and merge/display preferences. Current
-PR snapshots and the GitHub lookup caches live in worker memory.
+requests, local snoozes, avatar data and merge/display preferences. It also saves the last successful Orca and GitHub snapshots separately. The board
+opens with those cards dimmed until each source refreshes.
 ```
 
 ## Develop

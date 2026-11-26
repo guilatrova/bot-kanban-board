@@ -403,13 +403,19 @@ pre {
   padding: 8px;
   z-index: 3;
 }
-.skeleton {
-  margin-bottom: 8px;
-  background: linear-gradient(105deg, var(--card) 35%, var(--card-hover), var(--card) 65%);
-  background-size: 250%;
-  height: 110px;
-  border-radius: var(--r);
-  animation: pulse 1.4s infinite;
+.lane.is-stale article,
+.lane.is-stale .merged-card {
+  animation: none;
+  transition: none;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.lane .refresh-failure {
+  color: var(--dim);
+  white-space: nowrap;
+}
+.rail .refresh-failure {
+  writing-mode: vertical-rl;
 }
 @keyframes pulse {
   to {

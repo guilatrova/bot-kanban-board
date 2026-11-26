@@ -9,6 +9,7 @@ import { parseActions, moveState } from '../core/actions'
 export async function refreshItemData(
   orca: OrcaWorkerApi,
   data: Snapshot,
+  path: (key: string) => Promise<string>,
   saved: ReturnType<typeof savedBoard>,
   avatar: ReturnType<typeof avatars>,
   evaluateBells: Awaited<ReturnType<typeof notifications>>,
@@ -26,28 +27,31 @@ export async function refreshItemData(
       .map(([key]) => key),
   )
   for (const bell of data.bells ?? []) if (bell.kind === 'item') closing.add(bell.id)
-  const rows = await computers(String((await orca.settings.get('orcaPath')) || ''), closing, report)
-  const broken = rows.find(
-    (c) => !c.unpaired && (!c.source.ok || c.warning || c.source.value.bots.some((b) => b.warning)),
-  )
-  if (broken) {
-    data.sources.orca = { ...data.sources.orca, status: 'failed' }
-    publish()
-    await orca.host.call('statusBar.update', { id: 'needs-you', text: 'Needs you ?', tone: 'warning' })
-    return
-  }
+  const rows = await computers(await path('orcaPath'), closing, report)
   data.computers = rows
-  data.itemsAt = Date.now()
-  data.sources.orca = { status: 'fresh', at: data.itemsAt }
+  const hasCount = rows.some((c) => c.key !== 'discovery' && c.source.ok)
+  if (hasCount) {
+    data.itemsAt = Date.now()
+    data.sources.orca = { status: 'fresh', at: data.itemsAt }
+  } else data.sources.orca = { ...data.sources.orca, status: 'failed' }
   publish()
   try {
-    await saved.save('orca')
-    await evaluateBells({ items: data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])) })
-    await avatar.prune(data.computers)
-    const needsYou = rows
-      .flatMap((c) => (c.source.ok ? c.source.value.items : []))
-      .filter((i) => i.status === 'needs_you').length
-    await orca.host.call('statusBar.update', { id: 'needs-you', text: 'Needs you ' + needsYou, tone: 'neutral' })
+    const items = rows.flatMap((c) => (c.source.ok ? c.source.value.items : []))
+    if (hasCount) {
+      await saved.save('orca')
+      await evaluateBells({ items })
+      await avatar.prune(rows)
+    }
+    const needsYou = items.filter((i) => i.status === 'needs_you').length
+    const unreachable = rows.filter((c) => !c.source.ok).length
+    const text = hasCount
+      ? 'Needs you ' + needsYou + (unreachable ? ' · ' + unreachable + ' unreachable' : '')
+      : 'Needs you ?'
+    await orca.host.call('statusBar.update', {
+      id: 'needs-you',
+      text,
+      tone: hasCount ? (unreachable ? 'warning' : 'neutral') : 'danger',
+    })
   } catch (error) {
     report(error)
   }

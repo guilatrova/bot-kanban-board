@@ -67,7 +67,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   function refreshItems() {
     if (itemJob) return itemJob
     previousItems = data.sources.orca
-    return (itemJob = refreshItemData(orca, data, saved, avatar, evaluateBells, publish)
+    return (itemJob = refreshItemData(orca, data, path, saved, avatar, evaluateBells, publish)
       .catch((error) => {
         report(error)
         data.sources.orca = { ...data.sources.orca, status: 'failed' }
@@ -95,32 +95,26 @@ export default async function activate(orca: OrcaWorkerApi) {
     previousPrs = data.sources.github
     return (prJob = (async () => {
       const result = await github(await path('ghPath'))
-      const problem = !result.ok
-        ? result
-        : !result.value.merged.ok
-          ? result.value.merged
-          : Object.values(result.value.repos).find((repo) => !repo.ok)
-      if (result.ok && !problem) {
+      const search = result.ok ? result.value.merged : result
+      if (result.ok && search.ok) {
         for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
         data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
         data.repos = result.value.repos
-        const merged = result.value.merged
-        const history = merged.ok ? merged.value : data.merged
-        data.merged = mergedToday([...landed.values(), ...history.filter((pr) => !landed.has(prKey(pr)))])
+        data.merged = mergedToday([...landed.values(), ...search.value.filter((pr) => !landed.has(prKey(pr)))])
         data.total = result.value.total
         data.prsAt = Date.now()
         data.sources.github = { status: 'fresh', at: data.prsAt }
         data.error = null
         publish()
         await saved.save('github')
-        await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded && merged.ok })
+        await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded })
         const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
         for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
       }
-      if (problem) {
-        data.error = problem
+      if (!search.ok) {
+        data.error = search
         data.sources.github = { ...data.sources.github, status: 'failed' }
-        const next = retry(problem, ++failures, Date.now())
+        const next = retry(search, ++failures, Date.now())
         retryAt = next.at
         limitedUntil = next.limited ? retryAt : 0
         data.banner = next.message
@@ -148,7 +142,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     void refreshItems().catch(report)
     if (opening && (!prJob || data.sources.github === previousPrs) && limitedUntil <= Date.now())
       data.sources.github.status = 'stale'
-    if (visible.size) void refreshPrs().catch(report)
+    if (opening || visible.size) void refreshPrs().catch(report)
   }
   orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id

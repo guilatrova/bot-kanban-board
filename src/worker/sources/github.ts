@@ -1,11 +1,13 @@
+import { applyIncremental, syncMode, type SyncRow } from '../../core/pr-sync'
 import { mergedToday, mergeMethods, type RepositoryFacts } from '../../core/merge'
-import type { MergeInput, Progress } from '../../protocol'
+import type { MergeInput, Progress, Snapshot } from '../../protocol'
 import { prKey, type PullRequest, type Source } from '../../core/model'
 import { runCli } from '../cli'
 import { obj, rows, str, num, mappingFields, pullRequest, fileChange } from '../../core/normalize'
 import { reader, source } from './read'
 const pullFields = `number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}}`
-export const query = `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ ${pullFields} }}}}`
+const searchQuery = (fields: string) =>
+  `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ ${fields} }}}}`
 const logins = new Map<string, string>()
 const facts = new Map<string, { at: number; value: RepositoryFacts }>()
 export async function readRepository(path: string, repo: string) {
@@ -30,47 +32,94 @@ export async function readRepository(path: string, repo: string) {
   if (result.ok) facts.set(key, { at: Date.now(), value: result.value })
   return result
 }
-export function github(path: string) {
+function syncRow(value: unknown): SyncRow {
+  const raw = obj(value)
+  const state = raw.state
+  if (state !== 'OPEN' && state !== 'CLOSED' && state !== 'MERGED') throw Error('Unknown pull request state.')
+  return { state, pr: pullRequest(raw), mergedAt: typeof raw.mergedAt === 'string' ? raw.mergedAt : undefined }
+}
+async function searchPulls<T>(path: string, search: string, fields: string, normalize: (value: unknown) => T) {
+  const read = reader('gh', path)
+  const found: T[] = []
+  let total = 0,
+    after = ''
+  for (let page = 0; page < 5; page++) {
+    const result = await read(
+      [
+        'api',
+        'graphql',
+        '-f',
+        'query=' + searchQuery(fields),
+        '-f',
+        'search=' + search,
+        ...(after ? ['-f', 'after=' + after] : []),
+      ],
+      (v) => {
+        const search = obj(obj(obj(v).data).search),
+          info = obj(search.pageInfo)
+        return {
+          total: num(search, 'issueCount'),
+          rows: rows(search.nodes).map(normalize),
+          after: info.hasNextPage ? str(info, 'endCursor') : '',
+        }
+      },
+    )
+    found.push(...result.rows)
+    total = result.total
+    after = result.after
+    if (!after) break
+  }
+  return { found, total, after }
+}
+async function repositoryFacts(path: string, prs: PullRequest[]) {
+  const repos: Record<string, Source<RepositoryFacts>> = {}
+  await Promise.all(
+    Array.from(new Set(prs.map((p) => p.repo)), async (repo) => {
+      repos[repo] = await readRepository(path, repo)
+    }),
+  )
+  return repos
+}
+export function github(
+  path: string,
+  state: Pick<Snapshot, 'prs' | 'merged' | 'total' | 'repos' | 'allOpenLoaded' | 'syncedAt' | 'fullSyncedAt' | 'login'>,
+  now: Date,
+  manual: boolean,
+) {
   const read = reader('gh', path)
   return source('gh api graphql', async () => {
     const login = logins.get(path) ?? (await read(['api', 'user'], (v) => str(obj(v), 'login')))
     logins.set(path, login)
-    const prs: PullRequest[] = []
-    let total = 0,
-      after = ''
-    for (let page = 0; page < 5; page++) {
-      const result = await read(
-        [
-          'api',
-          'graphql',
-          '-f',
-          'query=' + query,
-          '-f',
-          'search=is:pr is:open user:' + login + ' sort:updated-desc',
-          ...(after ? ['-f', 'after=' + after] : []),
-        ],
-        (v) => {
-          const search = obj(obj(obj(v).data).search),
-            info = obj(search.pageInfo)
-          return {
-            total: num(search, 'issueCount'),
-            prs: rows(search.nodes).map(pullRequest),
-            after: info.hasNextPage ? str(info, 'endCursor') : '',
-          }
-        },
+    const syncedAt = now.toISOString()
+    if (syncMode(state, { now, login, manual }) === 'incremental') {
+      const since = new Date(Date.parse(state.syncedAt!) - 120_000).toISOString()
+      const changes = await searchPulls(
+        path,
+        'is:pr user:' + login + ' updated:>=' + since + ' sort:updated-desc',
+        pullFields + ' state mergedAt',
+        syncRow,
       )
-      prs.push(...result.prs)
-      total = result.total
-      after = result.after
-      if (!after) break
+      if (!changes.after) {
+        const next = applyIncremental(state, changes.found, now)
+        const repos = await repositoryFacts(path, next.prs)
+        return {
+          ...next,
+          repos,
+          merged: { ok: true as const, value: next.merged },
+          login,
+          syncedAt,
+          fullSyncedAt: state.fullSyncedAt,
+          allOpenLoaded: state.allOpenLoaded === true,
+        }
+      }
     }
-    const repos: Record<string, Source<RepositoryFacts>> = {}
-    const loadRepository = async (repo: string) => {
-      repos[repo] = await readRepository(path, repo)
-    }
-    const now = new Date()
+    const {
+      found: prs,
+      after,
+      total,
+    } = await searchPulls(path, 'is:pr is:open user:' + login + ' sort:updated-desc', pullFields, pullRequest)
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const [merged] = await Promise.all([
+    const [merged, repos] = await Promise.all([
       source('gh api graphql', () =>
         read(
           [
@@ -97,9 +146,18 @@ export function github(path: string) {
             ),
         ),
       ),
-      ...Array.from(new Set(prs.map((p) => p.repo)), loadRepository),
+      repositoryFacts(path, prs),
     ])
-    return { prs, total, repos, merged, allOpenLoaded: !after && prs.length >= total }
+    return {
+      login,
+      syncedAt,
+      fullSyncedAt: syncedAt,
+      prs,
+      total,
+      repos,
+      merged,
+      allOpenLoaded: !after && prs.length >= total,
+    }
   })
 }
 export function files(path: string, pr: PullRequest) {

@@ -50,6 +50,17 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
         data.merged = saved.merged
         data.repos = saved.repos
         data.total = saved.total
+        if (
+          typeof saved.login === 'string' &&
+          typeof saved.allOpenLoaded === 'boolean' &&
+          Number.isFinite(Date.parse(saved.syncedAt ?? '')) &&
+          Number.isFinite(Date.parse(saved.fullSyncedAt ?? ''))
+        ) {
+          data.login = saved.login
+          data.allOpenLoaded = saved.allOpenLoaded
+          data.syncedAt = saved.syncedAt
+          data.fullSyncedAt = saved.fullSyncedAt
+        }
         data.prsAt = record.at
       }
       data.sources[source] = { status: 'stale', at: record.at }
@@ -60,8 +71,12 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
   }
   async function save(source: SourceName) {
     const key = 'snapshot-' + source
-    const { computers, prs, merged, repos, total } = data
-    const bytes = Buffer.from(JSON.stringify(source === 'orca' ? { computers } : { prs, merged, repos, total }))
+    const { computers, prs, merged, repos, total, login, syncedAt, fullSyncedAt, allOpenLoaded } = data
+    const bytes = Buffer.from(
+      JSON.stringify(
+        source === 'orca' ? { computers } : { prs, merged, repos, total, login, syncedAt, fullSyncedAt, allOpenLoaded },
+      ),
+    )
     const hash = createHash('sha256').update(bytes).digest('hex')
     const count = Math.ceil(bytes.length / chunkBytes)
     const record: Manifest = { version: 1, at: data.sources[source].at, hash, count }

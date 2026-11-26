@@ -1,3 +1,4 @@
+import { mergePreflight } from './merge-preflight'
 import { savedBoard } from './saved-board'
 import { serveSnapshots } from './snapshot'
 import { retry } from './polling'
@@ -88,20 +89,24 @@ export default async function activate(orca: OrcaWorkerApi) {
     if (visible.size && !demo)
       timer = setTimeout(() => void refreshPrs().catch(report), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
   }
-  function refreshPrs() {
+  function refreshPrs(manual = false): Promise<void> {
     if (limitedUntil > Date.now()) return planPoll()
 
-    if (prJob) return prJob
+    if (prJob) return manual ? prJob.then(() => refreshPrs(true)) : prJob
     previousPrs = data.sources.github
     return (prJob = (async () => {
-      const result = await github(await path('ghPath'))
+      const result = await github(await path('ghPath'), data, new Date(), manual)
       const search = result.ok ? result.value.merged : result
       if (result.ok && search.ok) {
         for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
         data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
         data.repos = result.value.repos
         data.merged = mergedToday([...landed.values(), ...search.value.filter((pr) => !landed.has(prKey(pr)))])
-        data.total = result.value.total
+        data.total = result.value.total - (result.value.prs.length - data.prs.length)
+        data.login = result.value.login
+        data.syncedAt = result.value.syncedAt
+        data.fullSyncedAt = result.value.fullSyncedAt
+        data.allOpenLoaded = result.value.allOpenLoaded
         data.prsAt = Date.now()
         data.sources.github = { status: 'fresh', at: data.prsAt }
         data.error = null
@@ -136,13 +141,13 @@ export default async function activate(orca: OrcaWorkerApi) {
         await planPoll()
       }))
   }
-  function refresh(opening = false) {
+  function refresh(opening = false, manual = false) {
     if (demo) return
     if (opening && (!itemJob || data.sources.orca === previousItems)) data.sources.orca.status = 'stale'
     void refreshItems().catch(report)
     if (opening && (!prJob || data.sources.github === previousPrs) && limitedUntil <= Date.now())
       data.sources.github.status = 'stale'
-    if (opening || visible.size) void refreshPrs().catch(report)
+    if (opening || visible.size) void refreshPrs(manual).catch(report)
   }
   orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id
@@ -180,7 +185,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   })
   orca.panels.handle('board.refresh', async () => {
     if (demo) publish()
-    else refresh()
+    else refresh(false, true)
     return null
   })
   orca.panels.handle('avatar.get', async (input) => {
@@ -252,28 +257,34 @@ export default async function activate(orca: OrcaWorkerApi) {
         message: 'Pull request unavailable, changed or already merging.',
         next: 'Refresh the board and reopen the confirmation.',
       }
-    const assessment = assessMerge(pr, repo.value)
-    if (!assessment.canMerge || !assessment.methods.includes(input.method))
-      return {
-        ok: false as const,
-        command: 'Merge',
-        message: assessment.blockers.join(' ') || 'Method unavailable.',
-        next: 'Refresh and check the repository settings.',
-      }
     data.running = [...(data.running ?? []), key]
     publish()
     try {
+      let current = pr
+      if (!demo) {
+        const live = await mergePreflight(await path('ghPath'), input, data, recordMerged)
+        if (!live.ok) return live
+        current = live.value
+      }
+      const assessment = assessMerge(current, repo.value)
+      if (!assessment.canMerge || !assessment.methods.includes(input.method))
+        return {
+          ok: false as const,
+          command: 'Merge',
+          message: assessment.blockers.join(' ') || 'Method unavailable.',
+          next: 'Refresh and check the repository settings.',
+        }
       const progress = (e: Progress) => orca.panels.post('merge.progress', e)
       const ready = () => {
-        pr.draft = false
+        current.draft = false
         publish()
       }
       const result = demo
-        ? await demoMerge(pr, progress, ready, false)
-        : await mergePr(await path('ghPath'), pr, input, progress, ready)
+        ? await demoMerge(current, progress, ready, false)
+        : await mergePr(await path('ghPath'), current, input, progress, ready)
       if (result.ok) {
         const row = {
-          ...pr,
+          ...current,
           mergedAt: new Date().toISOString(),
         }
         recordMerged(row)

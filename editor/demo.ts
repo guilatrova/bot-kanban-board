@@ -41,7 +41,7 @@ const fake = {
       if (k === 'board.get') return { index: 0, count: 1, data: JSON.stringify(data) }
       if (k === 'pr.read' && input) {
         const pr = stackOrder(data.prs).find((p) => prKey(p) === prKey(input))
-        return pr ? { merged: false, pr, facts: data.repos[pr.repo] } : { merged: true }
+        return { ok: true, value: pr ? { merged: false, pr, facts: data.repos[pr.repo] } : { merged: true } }
       }
       if (k === 'board.refresh') {
         if (state !== 'loading') send()

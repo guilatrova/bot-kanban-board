@@ -81,7 +81,7 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
       })
     if (!live || !modal.open || !modal.contains(summary)) return
     if ('ok' in live) {
-      summary.textContent = live.message
+      summary.textContent = describeFailure(live)
       return
     }
     if (live.closed || live.merged) {

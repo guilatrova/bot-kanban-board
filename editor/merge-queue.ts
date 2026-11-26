@@ -114,14 +114,14 @@ export function mergeQueue(
           method = choice.method
         }
         step = 'merge'
-        let started = false,
-          completed = false
-        let progressFailure: AttemptFailure | undefined
-        progress = (event) => {
-          started = true
-          if (event.step === 'merge' && event.state === 'done') completed = true
-          if (event.failure) progressFailure = fromFailure(event.failure, 'merge')
-        }
+        let started = false
+        const completed = new Promise<boolean>((resolve) => {
+          progress = (event) => {
+            started = true
+            if (event.state === 'failed') resolve(false)
+            else if (event.step === 'merge' && event.state === 'done') resolve(true)
+          }
+        })
         let failure: AttemptFailure
         try {
           const result = await orca.plugin.request(
@@ -129,12 +129,16 @@ export function mergeQueue(
             { ...ref, method, sha: fresh.sha ?? '', updated: fresh.updated },
             requestOptions,
           )
-          if (result.ok && completed) {
+          if (result.ok && (await completed)) {
             await land(fresh)
             return 'merged'
           }
           failure = result.ok
-            ? (progressFailure ?? fromThrown(undefined, step, requestTimeoutSeconds))
+            ? {
+                step,
+                short: 'merge not confirmed',
+                full: 'GitHub accepted the merge request but did not confirm the merge. Refresh the board to check.',
+              }
             : fromFailure(result, started ? 'merge' : 'preflight')
         } catch (err) {
           failure = fromThrown(err, step, requestTimeoutSeconds)

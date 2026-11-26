@@ -36,16 +36,7 @@ export function notice(error: unknown) {
   node.textContent = hideIds(String(error))
   noticeTimer = setTimeout(() => node.replaceChildren(), 6500)
 }
-export const age = (time: number | string) => {
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(time).getTime()) / 60000))
-  return minutes < 1
-    ? 'just now'
-    : minutes < 60
-      ? minutes + 'm ago'
-      : minutes < 1440
-        ? Math.floor(minutes / 60) + 'h ago'
-        : Math.floor(minutes / 1440) + 'd ago'
-}
+export { age } from '../src/core/presentation'
 export const labels = {
   closed: 'Closed',
   done: 'Completed',

@@ -1,7 +1,7 @@
 import { itemStatusActions } from '../src/core/flags'
 import { panelRequest } from './panel-request'
 import { el, button, age, labels, notice, prPill, external, badge } from './dom'
-import { countLabel } from './pr-labels'
+import { countLabel } from '../src/core/presentation'
 import { showFiles } from './diff'
 import { isClosed, itemKey, prKey, type Item, type MappedPr, type Workspace } from '../src/core/model'
 export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: Item) => HTMLElement) {

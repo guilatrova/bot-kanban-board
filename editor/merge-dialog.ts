@@ -107,7 +107,9 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
       el('p', pr.head + ' → ' + pr.base),
       el(
         'p',
-        [mergeableLabel(pr.mergeable), checksLabel(pr.checks), '+' + pr.additions + ' −' + pr.deletions].join(' · '),
+        [mergeableLabel(pr.mergeable), checksLabel(pr.checks), '+' + pr.additions + ' −' + pr.deletions]
+          .filter(Boolean)
+          .join(' · '),
       ),
     )
     for (const w of assessment.warnings) summary.append(el('p', w.text, w.danger ? 'warning danger' : 'warning'))

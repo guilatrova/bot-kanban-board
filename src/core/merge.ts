@@ -14,7 +14,7 @@ export type MergePreferences = {
   askBeforeMerging: boolean
 }
 export function checksLabel(checks: string | null) {
-  if (!checks) return 'No checks'
+  if (!checks) return ''
   if (checks === 'SUCCESS') return 'Checks passed'
   return ['FAILURE', 'ERROR'].includes(checks) ? 'Checks failed' : 'Checks running'
 }

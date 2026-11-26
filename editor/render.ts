@@ -8,12 +8,12 @@ import { dropZones } from './drop-zones'
 import { selection, buildDeck } from './selection'
 import { mergeQueue } from './merge-queue'
 import { shownMerges, type MergedPr } from '../src/core/merge'
-import { prStats } from './pr-labels'
+import { prStats, shortRef } from '../src/core/presentation'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
 import { itemKey, prKey, isClosed, type Item, type MappedPr } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { patch, el, button, age, badge, prPill, notice, labels } from './dom'
+import { patch, el, button, age, badge, notice, labels } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
 import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
@@ -172,7 +172,7 @@ export function view(
         prefs.compact,
         data.notificationsOff,
         links.map((l) => ('status' in l ? itemKey(l) : prKey(l))),
-        age(row.updated),
+        age(row.updated, true),
         isItem && actions.pending(row),
       ])
       const open = () => (isItem ? drawer.item(row, prs, trees, element) : drawer.pr(row, element))
@@ -223,18 +223,18 @@ export function view(
             by ? badge(by.computer, by.bot) : el('span', '—', 'avatar'),
             el('span', row.title, 'compact-title'),
           )
-          if (!isItem && row.draft) node.append(el('span', 'Draft', 'compact-draft'))
-          node.append(el('time', age(row.updated)))
+          node.append(el('time', age(row.updated, true)))
           return node
         }
         const meta = el('div', '', 'meta')
         if (by) meta.append(badge(by.computer, by.bot))
         meta.append(
           el('small', by?.bot ?? 'No bot'),
-          el('small', isItem ? 'Item #' + row.number : prKey(row), 'ref'),
-          el('time', age(row.updated)),
+          el('small', isItem ? '#' + row.number : shortRef(row), 'ref'),
+          el('time', age(row.updated, true)),
         )
-        node.append(meta, el('h3', row.title))
+        node.append(el('h3', row.title), meta)
+        const stats = el('small', '', 'pr-stats')
         if (!isItem) node.append(select.checkbox(key))
         if (!closed) {
           const toggle = button(
@@ -278,18 +278,26 @@ export function view(
               : row.status === 'waiting'
                 ? row.wait
                 : row.workers.findLast((w) => w.subject)?.subject
-          if (sub) node.append(el('p', sub, 'quote'))
+          node.title = sub ?? ''
           const active = row.workers.find((w) => w.state === 'working')
           if (active) node.append(el('mark', '● ' + active.title, 'running'))
-          if (row.chat) node.append(el('small', row.chat))
-        } else node.append(merging ? el('mark', 'Merging…', 'ready') : prPill(row), el('small', prStats(row)))
+        } else {
+          const { diff, check, failed } = prStats(row)
+          stats.append(diff)
+          if (check) stats.append(' · ', el('span', check, failed ? 'failed' : ''))
+          node.append(stats)
+          if (merging) node.append(el('mark', 'Merging…', 'ready'))
+          else if (row.mergeable === 'CONFLICTING') node.append(el('mark', 'Conflict', 'conflict'))
+        }
         if (!isItem && row.behind) node.append(el('p', 'Behind ' + row.behind))
         for (const link of links) {
           const item = 'status' in link,
             k = item ? itemKey(link) : prKey(link)
-          node.append(
+          if (item) stats.append(' · ')
+          const parent = item ? stats : node
+          parent.append(
             button(
-              item ? link.bot + ' #' + link.number : k,
+              item ? 'for #' + link.number : k,
               (e) => {
                 e.stopPropagation()
                 const target = cards.get(k)

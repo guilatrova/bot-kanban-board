@@ -18,3 +18,22 @@ it('caps today’s merges newest first and clamps the preference', () => {
   ])
     expect(shownMerges(rows, value, now)).toHaveLength(count!)
 })
+
+import { selectableCards } from '../src/core/selection'
+import { prStats } from '../src/core/presentation'
+it('excludes collapsed and filtered cards, keeping scrolled-out checks only outside drag hit tests', () => {
+  const open = { key: 'open', rendered: true, collapsed: false, inViewport: true }
+  const cards = [
+    open,
+    { ...open, key: 'hidden', rendered: false },
+    { ...open, key: 'folded', collapsed: true },
+    { ...open, key: 'outside', inViewport: false },
+  ]
+  expect([...selectableCards(cards, true)]).toEqual(['open'])
+  expect([...selectableCards(cards, false)]).toEqual(['open', 'outside'])
+})
+it('formats the diff, files and optional check status', () => {
+  const pr = { additions: 60594, deletions: 0, files: 202, checks: null }
+  expect(prStats(pr)).toEqual({ diff: '+60,594 −0 · 202 files', check: '', failed: false })
+  expect(prStats({ ...pr, checks: 'FAILURE' })).toMatchObject({ check: 'Checks failed', failed: true })
+})

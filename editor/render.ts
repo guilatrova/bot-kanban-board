@@ -1,3 +1,4 @@
+import { itemStatusActions } from '../src/core/flags'
 import { panelRequest } from './panel-request'
 import { setStorage } from './storage'
 import { mergeToasts } from './merge-toasts'
@@ -18,7 +19,6 @@ import { mergeDialog } from './merge-dialog'
 import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
 import { boardHeader } from './header'
 import type { Bell } from '../src/core/bells'
-type Row = Item | MappedPr
 import { type readViews } from './views'
 import { itemActions, type readActions } from './item-actions'
 export function view(
@@ -146,7 +146,7 @@ export function view(
     header.draw(data, board, trees)
     const animate = cardMotion(cards)
     const alive = new Set<string>()
-    function card(row: Row) {
+    function card(row: Item | MappedPr) {
       const isItem = 'status' in row,
         closed = isItem && isClosed(row.status),
         key = isItem ? itemKey(row) : prKey(row)
@@ -177,7 +177,7 @@ export function view(
       ])
       const open = () => (isItem ? drawer.item(row, prs, trees, element) : drawer.pr(row, element))
       if (isItem) {
-        node.draggable = !closed && !stale
+        node.draggable = itemStatusActions && !closed && !stale
         node.oncontextmenu = stale
           ? null
           : (e) => {

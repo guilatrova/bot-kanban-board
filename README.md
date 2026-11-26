@@ -23,7 +23,7 @@ Click a bot chip to hide or show its cards. Right-click, Option-click or Command
 
 Open a PR and choose **Merge**, or drag it onto the merge zone. To close it without merging, drag it onto **Close PR** and confirm. For a batch, use a PR’s checkbox or drag a rectangle from empty board space. Shift or Command adds to your selection. Escape clears it. Choose **Merge all** or drag the selected PRs together to start the queue.
 
-Use an open card’s bell to receive one notification when an Item changes status or a PR is ready to merge. Item bells need the worker running. PR bells are checked while the board is visible and when you return to it. Use an Item’s **More** menu for snooze, chat and status requests. Status changes are prepared as messages for you to paste into the bot’s chat. An unconfirmed request expires after ten minutes.
+Use an open card’s bell to receive one notification when an Item changes status or a PR is ready to merge. Item bells need the worker running. PR bells are checked while the board is visible and when you return to it. Use an Item’s **More** menu to snooze it or open its bot chat.
 
 ## Settings
 
@@ -34,6 +34,12 @@ Open the gear to change the board’s saved preferences.
 - **After a merge** sends one Orca message to the selected bot after a merge or a batch. Turn on **Tell a bot** to choose a recipient.
 
 Orca’s plugin settings also control executable paths, refresh intervals and demo mode. Item reads default to 30 seconds and PR reads to 90 seconds. Click the read timestamp for a manual refresh.
+
+## Feature flags
+
+The code-only `itemStatusActions` flag in [src/core/flags.ts](src/core/flags.ts) defaults to `false`. It hides Move to (Needs you, In progress, Waiting), Complete, Cancel, the status selector, item drag, and the “Move to … requested” badge and dialog.
+
+Orca’s `PLUGIN_HOST_API` has no `bots.*` method, so `orca.host.call('bots.items.owner.status', …)` returns `unknown_method`. The `orca bot item set|done|cancel` commands require a caller in the bot’s own chat. When Orca supports plugin item writes, flip the flag to `true` and replace the paste dialog in `move()` with the host call. See [issue #33](https://github.com/guilatrova/bot-kanban-board/issues/33).
 
 ## Troubleshooting
 

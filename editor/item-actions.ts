@@ -1,3 +1,4 @@
+import { itemStatusActions } from '../src/core/flags'
 import { panelRequest } from './panel-request'
 import { setStorage } from './storage'
 import { isClosed, itemKey, type Item } from '../src/core/model'
@@ -55,7 +56,7 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     if (Number.isFinite(next)) timer = setTimeout(redraw, Math.min(2147483647, next - now))
   }
   function move(item: Item, target: Target) {
-    if (target === item.status) return
+    if (!itemStatusActions || target === item.status) return
     function request(reason?: string) {
       state.moves[itemKey(item)] = { target, at: Date.now() }
       changed()
@@ -117,23 +118,25 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
       shortcuts.set(hint.toLowerCase(), row)
       return row
     }
-    parent.node.append(el('div', 'Move to', 'mlabel'))
-    for (const [target, key] of [
-      ['needs_you', 'N'],
-      ['in_progress', 'P'],
-      ['waiting', 'W'],
-    ] as const)
-      entry(
-        names[target],
-        key,
-        () => move(item, target),
-        item.status === target || (item.status === 'planned' && target === 'waiting'),
-        target,
-      )
-    parent.node.append(el('hr'))
-    entry('Complete', 'D', () => move(item, 'done'), false, 'ok')
-    entry('Cancel…', '⌫', () => move(item, 'canceled'), false, 'bad')
-    parent.node.append(el('hr'))
+    if (itemStatusActions) {
+      parent.node.append(el('div', 'Move to', 'mlabel'))
+      for (const [target, key] of [
+        ['needs_you', 'N'],
+        ['in_progress', 'P'],
+        ['waiting', 'W'],
+      ] as const)
+        entry(
+          names[target],
+          key,
+          () => move(item, target),
+          item.status === target || (item.status === 'planned' && target === 'waiting'),
+          target,
+        )
+      parent.node.append(el('hr'))
+      entry('Complete', 'D', () => move(item, 'done'), false, 'ok')
+      entry('Cancel…', '⌫', () => move(item, 'canceled'), false, 'bad')
+      parent.node.append(el('hr'))
+    }
     let sub: ReturnType<typeof popover> | undefined
     function openSub() {
       if (sub?.node.isConnected) {
@@ -243,6 +246,7 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     showList,
     syncList,
     pending(i: Item) {
+      if (!itemStatusActions) return ''
       const m = state.moves[itemKey(i)]
       if (!m) return ''
       return moveState(m, i.status, Date.now()) === 'expired'

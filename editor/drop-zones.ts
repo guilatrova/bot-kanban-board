@@ -1,3 +1,4 @@
+import { itemStatusActions } from '../src/core/flags'
 import { statuses, type Status, type Item, type MappedPr } from '../src/core/model'
 import type { makeLane, Lane } from './lanes'
 import type { buildDeck } from './selection'
@@ -85,6 +86,7 @@ export function dropZones(
     attach,
     resetDrag,
     item(row: Item) {
+      if (!itemStatusActions) return
       draggedItem = row
       dragTarget('closed', true)
     },

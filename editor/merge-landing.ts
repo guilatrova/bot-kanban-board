@@ -1,6 +1,7 @@
+import { age } from '../src/core/presentation'
 import { type MergedPr } from '../src/core/merge'
 import { prKey } from '../src/core/model'
-import { el, age, openExternal, notice } from './dom'
+import { el, openExternal, notice } from './dom'
 import { icon } from './lanes'
 
 export function mergedRow(pr: MergedPr) {

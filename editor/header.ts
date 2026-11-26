@@ -1,8 +1,9 @@
+import { age } from '../src/core/presentation'
 import { panelRequest } from './panel-request'
 import { type Board, toggleBot } from '../src/core/board'
 import { botKey, type Workspace } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
-import { el, button, age, badge, describeFailure } from './dom'
+import { el, button, badge, describeFailure } from './dom'
 import { views, type readViews } from './views'
 import { popover } from './popover'
 import { icon } from './lanes'
@@ -48,16 +49,13 @@ export function boardHeader(
   const brand = el('h1', 'Bot Kanban Board', 'brand')
   brand.prepend(icon('M2 2h3.6v12H2zM6.7 2h3.6v8H6.7zM11.4 2H15v5h-3.6z', 16))
   const tools = el('div', '', 'header-tools')
-  const openCount = el('span')
-  tools.append(openCount, updated, filter, gear)
+  tools.append(updated, filter, gear)
   header.append(brand, demo, el('span', '', 'sep'), filters, unreachable, tools)
   document.body.append(header, message, lanes)
 
   return {
     lanes,
     draw(data: Snapshot, board: Board, trees: Workspace[]) {
-      openCount.hidden = data.total <= data.prs.length
-      openCount.textContent = openCount.hidden ? '' : data.prs.length + ' of ' + data.total
       demo.hidden = !data.demo
       const selected = board.selected
       updated.replaceChildren(el('span', '', 'live'), data.itemsAt ? 'Read ' + age(data.itemsAt) : 'Reading…')

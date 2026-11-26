@@ -1,3 +1,4 @@
+import { selectableCards } from '../src/core/selection'
 import { prKey, type MappedPr } from '../src/core/model'
 import { button, el } from './dom'
 import { icon } from './lanes'
@@ -13,8 +14,48 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
   const go = button('Merge all', () => merge([...selected].map((k) => visible.get(k)!)), 'go')
   const bar = el('div', '', 'selbar')
   bar.append(label, button('Clear', clear), go)
-  lane.append(bar)
+  document.body.append(bar)
+  const list = lane.querySelector<HTMLElement>('.list')!
+  function allowed(drag?: Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom'>) {
+    const viewport = drag ? list.getBoundingClientRect() : undefined
+    return selectableCards(
+      [...visible.keys()].map((key) => {
+        const card = cards.get(key)
+        let inViewport = false
+        if (drag && viewport && card) {
+          const rect = card.getBoundingClientRect()
+          const left = Math.max(rect.left, viewport.left),
+            right = Math.min(rect.right, viewport.right)
+          const top = Math.max(rect.top, viewport.top),
+            bottom = Math.min(rect.bottom, viewport.bottom)
+          inViewport =
+            left < right &&
+            top < bottom &&
+            drag.left <= right &&
+            drag.right >= left &&
+            drag.top <= bottom &&
+            drag.bottom >= top
+        }
+        return {
+          key,
+          rendered: !!card && lane.contains(card),
+          collapsed: !!card?.closest('details:not([open]),.rail'),
+          inViewport,
+        }
+      }),
+      Boolean(drag),
+    )
+  }
+  const prune = () => {
+    const open = allowed()
+    for (const key of selected) if (!open.has(key)) selected.delete(key)
+    sync()
+  }
+  lane.addEventListener('toggle', prune, true)
+  lane.addEventListener('click', prune)
+  lane.addEventListener('keyup', prune)
   function sync() {
+    go.textContent = selected.size === 1 ? 'Merge' : 'Merge all'
     label.textContent = selected.size + (selected.size === 1 ? ' pull request selected' : ' pull requests selected')
     lane.classList.toggle('sel-mode', !!selected.size)
     bar.inert = !selected.size
@@ -64,18 +105,17 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
         width: right - left + 'px',
         height: bottom - top + 'px',
       })
+      const available = allowed({
+        left: Math.max(bounds.left, left),
+        right: Math.min(bounds.right, right),
+        top,
+        bottom,
+      })
+      const open = allowed()
       for (const key of visible.keys()) {
         const card = cards.get(key)
         if (!card) continue
-        const r = card.getBoundingClientRect(),
-          clip = card.closest('.list')!.getBoundingClientRect()
-        const hit =
-          r.width > 0 &&
-          r.height > 0 &&
-          !card.closest('.rail') &&
-          Math.max(r.left, clip.left, bounds.left, left) <= Math.min(r.right, clip.right, bounds.right, right) &&
-          Math.max(r.top, clip.top, top) <= Math.min(r.bottom, clip.bottom, bottom)
-        if (hit || base.has(key)) {
+        if (available.has(key) || (base.has(key) && open.has(key))) {
           if (!selected.has(key) && !matchMedia('(prefers-reduced-motion: reduce)').matches)
             card.animate([{ scale: '1.015' }, { scale: '1' }], { duration: 180, easing: 'cubic-bezier(.34,1.4,.5,1)' })
           selected.add(key)
@@ -129,8 +169,7 @@ export function selection(lane: HTMLElement, cards: Map<string, HTMLElement>, me
     go,
     draw(prs: MappedPr[]) {
       visible = new Map(prs.map((p) => [prKey(p), p]))
-      for (const k of selected) if (!visible.has(k)) selected.delete(k)
-      sync()
+      prune()
     },
     click(e: MouseEvent, k: string) {
       if (!e.metaKey && !e.ctrlKey && !selected.size) return false

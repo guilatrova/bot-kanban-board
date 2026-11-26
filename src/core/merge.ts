@@ -8,14 +8,16 @@ export type MergePreferences = {
   mergeMethod: MergeMethod
   botName: string
   computer: string
+  mergedLimit: number
   compact: boolean
   tellBot: boolean
   askBeforeMerging: boolean
 }
+export const checksFailed = (checks: string | null) => checks === 'FAILURE' || checks === 'ERROR'
 export function checksLabel(checks: string | null) {
-  if (!checks) return 'No checks'
+  if (!checks) return ''
   if (checks === 'SUCCESS') return 'Checks passed'
-  return ['FAILURE', 'ERROR'].includes(checks) ? 'Checks failed' : 'Checks running'
+  return checksFailed(checks) ? 'Checks failed' : 'Checks running'
 }
 export function mergeableLabel(state: string) {
   if (state === 'MERGEABLE') return 'No conflicts'
@@ -89,4 +91,11 @@ export function mergedToday(prs: MergedPr[], now = new Date()) {
   return prs
     .filter((p) => isToday(new Date(p.mergedAt), now))
     .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
+}
+
+export function mergedLimit(value?: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(50, Math.max(1, Math.trunc(value))) : 10
+}
+export function shownMerges(prs: MergedPr[], limit?: number, now = new Date()) {
+  return mergedToday(prs, now).slice(0, mergedLimit(limit))
 }

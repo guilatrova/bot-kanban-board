@@ -1,6 +1,6 @@
 import { setStorage } from './storage'
 import { version } from '../src/version'
-import { mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
+import { mergedLimit, mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
 import { botKey, type Computer } from '../src/core/model'
 import { badge, button, el, external, notice } from './dom'
 import { icon } from './lanes'
@@ -12,11 +12,13 @@ export async function readMergeSettings(demo: boolean) {
     mergeMethod: 'squash',
     askBeforeMerging: true,
     compact: false,
+    mergedLimit: mergedLimit(),
     tellBot: false,
     botName: '',
     computer: 'local',
   }
   if (state && typeof state === 'object' && !Array.isArray(state)) {
+    prefs.mergedLimit = mergedLimit(state.mergedLimit)
     prefs.compact = state.compact === true
     prefs.tellBot = state.tellBot === true
     prefs.botName = typeof state.botName === 'string' ? state.botName : ''
@@ -77,7 +79,19 @@ export function settings(saved: MergePreferences, update: () => void, computers:
         }
         return row(name, hint, input, true)
       }
-      group('Display').append(toggle('compact', 'Compact cards', 'One line per card: bot, title, age.'))
+      const limit = el('input')
+      const limitLabel = 'Merged pull requests shown'
+      Object.assign(limit, { type: 'number', min: '1', max: '50', value: String(saved.mergedLimit) })
+      limit.setAttribute('aria-label', limitLabel)
+      limit.onchange = () => {
+        saved.mergedLimit = mergedLimit(limit.valueAsNumber)
+        limit.value = String(saved.mergedLimit)
+        update()
+      }
+      group('Display').append(
+        row(limitLabel, '', limit),
+        toggle('compact', 'Compact cards', 'One line per card: bot, title, age.'),
+      )
       const merging = group('Merging'),
         segment = el('div', '', 'segc'),
         thumb = el('span', '', 'thumb')

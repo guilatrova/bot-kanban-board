@@ -1,6 +1,6 @@
+import { prStats } from '../src/core/presentation'
 import { panelRequest } from './panel-request'
 import {
-  checksLabel,
   mergeableLabel,
   type Warning,
   methodLabels,
@@ -102,13 +102,11 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
       )
       return
     }
+    const { diff, check } = prStats(pr)
     const assessment = assessMerge(pr, facts.value)
     summary.append(
       el('p', pr.head + ' → ' + pr.base),
-      el(
-        'p',
-        [mergeableLabel(pr.mergeable), checksLabel(pr.checks), '+' + pr.additions + ' −' + pr.deletions].join(' · '),
-      ),
+      el('p', [mergeableLabel(pr.mergeable), check, diff].filter(Boolean).join(' · ')),
     )
     for (const w of assessment.warnings) summary.append(el('p', w.text, w.danger ? 'warning danger' : 'warning'))
     for (const blocker of assessment.blockers) summary.append(el('p', blocker, 'warning'))

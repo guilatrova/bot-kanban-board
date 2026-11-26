@@ -8,6 +8,7 @@ export type MergePreferences = {
   mergeMethod: MergeMethod
   botName: string
   computer: string
+  mergedLimit: number
   compact: boolean
   tellBot: boolean
   askBeforeMerging: boolean
@@ -89,4 +90,11 @@ export function mergedToday(prs: MergedPr[], now = new Date()) {
   return prs
     .filter((p) => isToday(new Date(p.mergedAt), now))
     .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
+}
+
+export function mergedLimit(value?: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(50, Math.max(1, Math.trunc(value))) : 10
+}
+export function shownMerges(prs: MergedPr[], limit?: number, now = new Date()) {
+  return mergedToday(prs, now).slice(0, mergedLimit(limit))
 }

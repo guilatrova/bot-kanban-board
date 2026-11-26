@@ -7,7 +7,7 @@ import { land, mergedRow } from './merge-landing'
 import { dropZones } from './drop-zones'
 import { selection, buildDeck } from './selection'
 import { mergeQueue } from './merge-queue'
-import { type MergedPr } from '../src/core/merge'
+import { shownMerges, type MergedPr } from '../src/core/merge'
 import { prStats } from './pr-labels'
 import { cardMotion } from './card-motion'
 import { buildBoard } from '../src/core/board'
@@ -327,8 +327,9 @@ export function view(
           }
         }
       } else if (key === 'merged') {
-        col.update(board.merged.length, [])
-        for (const row of board.merged) {
+        const shown = shownMerges(board.merged, prefs.mergedLimit)
+        col.update(shown.length, [])
+        for (const row of shown) {
           const key = 'merged:' + prKey(row)
           alive.add(key)
           let node = cards.get(key)

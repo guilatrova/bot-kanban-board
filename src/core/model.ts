@@ -83,7 +83,6 @@ export interface PullRequest {
   sha?: string
   head: string
   base: string
-  body: string
   updated: string
   additions: number
   deletions: number

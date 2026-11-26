@@ -9,6 +9,7 @@ import {
   type Worker,
   type Workspace,
   type PullRequest,
+  type IssueRef,
   type FileChange,
 } from './model'
 import { isToday } from './merge'
@@ -190,13 +191,19 @@ export function items(
       ]
     })
 }
+export function bodyIssueRefs(body: string, repo: string): IssueRef[] {
+  return Array.from(body.matchAll(/(?<![\w./-])(?:([\w.-]+\/[\w.-]+))?#(\d+)\b/g), (m) => ({
+    repo: m[1] ?? repo,
+    number: Number(m[2]),
+  }))
+}
 export function mappingFields(p: ReturnType<typeof obj>) {
   return {
     head: str(p, 'headRefName'),
-    body: str(p, 'body'),
     closes: rows(obj(p.closingIssuesReferences).nodes)
       .map(obj)
-      .map((r) => ({ number: num(r, 'number'), repo: str(obj(r.repository), 'nameWithOwner') })),
+      .map((r) => ({ number: num(r, 'number'), repo: str(obj(r.repository), 'nameWithOwner') }))
+      .concat(bodyIssueRefs(str(p, 'body'), str(obj(p.repository), 'nameWithOwner'))),
   }
 }
 export function pullRequest(input: unknown): PullRequest {

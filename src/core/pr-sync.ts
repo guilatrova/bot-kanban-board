@@ -1,6 +1,7 @@
 import { mergedToday, type MergedPr } from './merge'
 import { prKey, type PullRequest } from './model'
 
+export const maxOpenPrs = 50
 export const FULL_SYNC_MS = 30 * 60_000
 export interface SyncMetadata {
   syncedAt?: string
@@ -33,7 +34,7 @@ export function applyIncremental(
   }
   const prs = [...open.values()].sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))
   return {
-    prs,
+    prs: prs.slice(0, maxOpenPrs),
     merged: mergedToday([...merged.values()], now),
     total: state.allOpenLoaded ? prs.length : state.total + prs.length - state.prs.length,
   }

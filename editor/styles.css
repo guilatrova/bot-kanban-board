@@ -2440,8 +2440,11 @@ mark.running {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .undo-footer,
-  .undo-track {
+  .undo-footer {
     animation: none;
+  }
+  .undo-track {
+    animation-timing-function: steps(5, end);
+    transition: none;
   }
 }

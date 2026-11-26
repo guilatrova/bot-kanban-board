@@ -36,10 +36,6 @@ async function start() {
     }
     const data = JSON.parse(chunks.join('')) as Snapshot
     latest = data
-    if (!board && data.prsAt === 0) {
-      if (data.banner) showError(data.banner)
-      return
-    }
     if (!board) {
       const [saved, actions, collapsed] = await Promise.all([
         readViews(Boolean(data.demo), roster),

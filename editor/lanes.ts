@@ -1,6 +1,6 @@
 import { scrollArea } from './scroll-area'
 import { badge, el, labels, notice } from './dom'
-import { itemLanes, botKey } from '../src/core/model'
+import { itemLanes, botKey, type SourceState } from '../src/core/model'
 export const laneKeys = [...itemLanes, 'prs', 'merged'] as const
 export type Lane = (typeof laneKeys)[number]
 const drawings = {
@@ -38,12 +38,14 @@ export function makeLane(key: Lane, collapsed: Set<string>, save: () => Promise<
     heading = el('h2'),
     title = el('b'),
     count = el('small', '', 'count'),
+    failure = el('small', "Couldn't refresh", 'refresh-failure'),
     photos = el('div', '', 'railav'),
     fold = el('span', '‹', 'fold'),
     list = el('div', '', 'list')
   scrollArea(list)
   title.append(el('span', labels[key]))
-  heading.append(title, count, fold, photos)
+  failure.hidden = true
+  heading.append(title, count, failure, fold, photos)
   heading.setAttribute('role', 'button')
   heading.tabIndex = 0
   lane.dataset.key = key
@@ -76,6 +78,10 @@ export function makeLane(key: Lane, collapsed: Set<string>, save: () => Promise<
     lane,
     list,
     empty,
+    showSource(source: SourceState) {
+      lane.classList.toggle('is-stale', source.status !== 'fresh')
+      failure.hidden = source.status !== 'failed'
+    },
     expandForDrag(on: boolean) {
       temporary = on
       sync()

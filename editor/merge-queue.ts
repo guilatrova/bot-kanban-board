@@ -146,7 +146,8 @@ export function mergeQueue(
           progress = undefined
         }
         const reread = await orca.plugin.request('pr.read', ref, requestOptions).catch(() => undefined)
-        return reread && !('ok' in reread) && (reread.merged || reread.closed) ? 'removed' : failure
+        if (reread && 'ok' in reread) return fromFailure(reread, 'PR read')
+        return reread && (reread.merged || reread.closed) ? 'removed' : failure
       } catch (err) {
         return fromThrown(err, step, requestTimeoutSeconds)
       }

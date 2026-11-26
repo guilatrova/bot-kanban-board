@@ -180,13 +180,34 @@ export default async function activate(orca: OrcaWorkerApi) {
       return { merged: true as const }
     }
     if (input.prOnly && live?.pr) {
-      data.repos[repo] = await readRepository(ghPath, repo)
+      const repository = await source('gh api repos', () => readRepository(ghPath, repo))
+      if (!repository.ok) return repository
+      data.repos[repo] = repository.value
+      if (!repository.value.ok) return repository.value
       const index = data.prs.findIndex((p) => prKey(p) === prKey(input))
       if (index >= 0) data.prs[index] = live.pr
-    } else if (!demo) await refreshPrs()
+    } else if (!demo) {
+      try {
+        await refreshPrs()
+      } catch (error) {
+        return {
+          ok: false as const,
+          command: 'Refresh PRs',
+          message: error instanceof Error ? error.message : String(error),
+          next: 'Refresh the board and try again.',
+        }
+      }
+    }
     const pr = live?.pr ?? data.prs.find((p) => prKey(p) === prKey(input))
     const facts = data.error || data.repos[input.repo]
-    if (!pr || !facts) throw Error('Pull request unavailable.')
+    if (facts && !facts.ok) return facts
+    if (!pr || !facts)
+      return {
+        ok: false as const,
+        command: 'PR read',
+        message: !pr ? 'PR #' + number + ' not found on the board' : 'No repository data for ' + repo,
+        next: 'Refresh the board and try again.',
+      }
     const ordered = stackOrder([pr, ...data.prs.filter((p) => prKey(p) !== prKey(input))])
     return { merged: false as const, pr: ordered.find((p) => prKey(p) === prKey(input))!, facts }
   })

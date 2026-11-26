@@ -47,6 +47,7 @@ export function fromFailure(f: Failure, step: MergeStep): AttemptFailure {
   if (f.kind === 'network')
     return { step, short: 'network error', full: 'Could not reach GitHub. Check the internet connection.' }
   if (
+    f.command !== 'PR read' &&
     /^[A-Z][A-Z_0-9]*$|\b[A-Z]+_[A-Z_]+\b|\bE[A-Z]{2,}\b|\bpr\.(read|merge)\b|^(?:Command failed|TypeError:|Error:|SyntaxError:|spawn )/m.test(
       full,
     )

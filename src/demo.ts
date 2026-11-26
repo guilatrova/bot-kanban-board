@@ -105,6 +105,7 @@ export function demoBoard(state: string | null = null) {
         base: pr.head,
         draft: true,
         closes: [],
+        mentions: [],
       },
     ],
     repos: {

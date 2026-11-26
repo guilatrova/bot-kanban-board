@@ -8,10 +8,12 @@ import type { Snapshot } from '../protocol'
 type SourceName = keyof Snapshot['sources']
 type Manifest = ChunkRecord & { version: 1; at: number }
 
-function migratePr<T extends { repo: string; closes?: IssueRef[] }>(pr: T & { body?: string }): T {
-  if (typeof pr.body !== 'string') return pr
-  const { body, ...fields } = pr
-  return Object.assign(fields, { closes: [...(pr.closes ?? []), ...bodyIssueRefs(body, pr.repo)] }) as T
+function migratePr<T extends { repo: string; mentions?: IssueRef[] }>(pr: T & { body?: string }): T {
+  if (typeof pr.body === 'string') {
+    pr.mentions = bodyIssueRefs(pr.body, pr.repo)
+    delete pr.body
+  }
+  return pr
 }
 
 function isManifest(value: unknown): value is Manifest {

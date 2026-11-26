@@ -90,6 +90,7 @@ export interface PullRequest {
   mergeable: string
   checks: string | null
   closes: IssueRef[]
+  mentions: IssueRef[]
 }
 export interface MappedPr extends PullRequest {
   behind?: string

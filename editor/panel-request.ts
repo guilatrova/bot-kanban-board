@@ -18,17 +18,24 @@ export function recentCalls() {
     .map((call) => call.method)
 }
 
+let lastReload = -Infinity
 function reloadAfterRefusal() {
   const key = 'bot-kanban-board.last-refusal-reload'
   const now = Date.now()
+  if (now - lastReload < 30_000) return false
   try {
     if (now - Number(sessionStorage.getItem(key)) < 30_000) return false
     sessionStorage.setItem(key, String(now))
-    notice('Plugin updated, reloading…')
+  } catch {
+    // Some editor frames deny session storage. The in-memory guard still covers this frame.
+  }
+  lastReload = now
+  try {
     location.reload()
   } catch {
-    notice('Plugin updated, reloading…')
+    return false
   }
+  notice('Plugin updated, reloading…')
   return true
 }
 

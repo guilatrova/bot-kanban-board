@@ -13,13 +13,13 @@ function mentions(text: string, ref: IssueRef, path: string) {
   return false
 }
 export function owners(
-  pr: IssueRef & Partial<Pick<PullRequest, 'head' | 'closes'>>,
+  pr: IssueRef & Partial<Pick<PullRequest, 'head' | 'closes' | 'mentions'>>,
   items: Item[],
   workspaces: Workspace[],
 ) {
   const branches = workspaces.filter((w) => w.branch === pr.head && repoMatch(w.repo, pr.repo))
   const direct = items.filter((i) => mentions(i.text, pr, 'pull'))
-  const issues = pr.closes ?? []
+  const issues = [...(pr.closes ?? []), ...(pr.mentions ?? [])]
   const matches = direct.length ? direct : items.filter((i) => issues.some((r) => mentions(i.text, r, 'issues')))
   return {
     items: matches,

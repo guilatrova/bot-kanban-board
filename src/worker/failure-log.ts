@@ -114,7 +114,10 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
       return null
     })
     return {
-      ...orca.storage,
+      get: (key) => orca.storage.get(key),
+      keys: () => orca.storage.keys(),
+      delete: (key) => orca.storage.delete(key),
+      onDidChange: (listener) => orca.storage.onDidChange(listener),
       async set(key, value) {
         try {
           await orca.storage.set(key, value)

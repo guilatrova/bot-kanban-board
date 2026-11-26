@@ -1,5 +1,5 @@
 import { setStorage } from './storage'
-import manifest from '../orca-plugin.json'
+import { version } from '../src/version'
 import { mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
 import { botKey, type Computer } from '../src/core/model'
 import { badge, button, el, external, notice } from './dom'
@@ -187,7 +187,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
       panel.node.addEventListener('dismiss', () => list?.close())
       const footer = el('div', '', 'pf')
       footer.append(
-        el('span', manifest.name + ' ' + manifest.version),
+        el('span', 'Bot Kanban Board ' + version),
         external('Who created this?', 'https://github.com/guilatrova'),
       )
       panel.node.append(footer)

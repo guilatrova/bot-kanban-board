@@ -202,8 +202,8 @@ export function mappingFields(p: ReturnType<typeof obj>) {
     head: str(p, 'headRefName'),
     closes: rows(obj(p.closingIssuesReferences).nodes)
       .map(obj)
-      .map((r) => ({ number: num(r, 'number'), repo: str(obj(r.repository), 'nameWithOwner') }))
-      .concat(bodyIssueRefs(str(p, 'body'), str(obj(p.repository), 'nameWithOwner'))),
+      .map((r) => ({ number: num(r, 'number'), repo: str(obj(r.repository), 'nameWithOwner') })),
+    mentions: bodyIssueRefs(str(p, 'body'), str(obj(p.repository), 'nameWithOwner')),
   }
 }
 export function pullRequest(input: unknown): PullRequest {

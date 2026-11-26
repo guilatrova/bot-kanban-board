@@ -80,6 +80,10 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
         return null
       })
     if (!live || !modal.open || !modal.contains(summary)) return
+    if ('ok' in live) {
+      summary.textContent = live.message
+      return
+    }
     if (live.closed || live.merged) {
       summary.textContent = live.merged ? 'Pull request already merged.' : 'Pull request already closed.'
       return

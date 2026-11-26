@@ -1,3 +1,4 @@
+import { source } from './sources/read'
 import { mergePreflight } from './merge-preflight'
 import { savedBoard } from './saved-board'
 import { serveSnapshots } from './snapshot'
@@ -170,7 +171,9 @@ export default async function activate(orca: OrcaWorkerApi) {
   orca.panels.handle('pr.read', async (input) => {
     const ghPath = await path('ghPath')
     const { repo, number } = input
-    const live = demo ? undefined : await readPull(ghPath, { repo, number })
+    const read = demo ? undefined : await source('gh api graphql', () => readPull(ghPath, { repo, number }))
+    if (read && !read.ok) return read
+    const live = read?.value
     if (live?.closed) return { closed: true as const, merged: false as const }
     if (live?.merged || (demo && data.merged.some((p) => prKey(p) === prKey(input)))) {
       if (live?.merged) recordMerged(live.row)

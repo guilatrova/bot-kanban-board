@@ -1741,8 +1741,9 @@ article.gone {
 }
 .qrow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 0 8px;
   padding: 7px 10px;
   font-size: 13px;
   border-bottom: 1px solid #ffffff08;
@@ -1750,6 +1751,93 @@ article.gone {
     background 0.3s,
     opacity 0.3s,
     transform 0.3s var(--ease);
+}
+.qrow .er {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-top: 1px;
+  font: 11.5px var(--mono);
+  color: var(--dim);
+  cursor: pointer;
+  text-align: left;
+}
+.qrow .er:hover {
+  color: var(--fg);
+}
+.qrow .er .chev {
+  flex: none;
+  width: 10px;
+  color: var(--faint);
+  transition: transform 0.2s var(--ease);
+}
+.qrow .er[aria-expanded='true'] .chev {
+  transform: rotate(90deg);
+}
+.qrow .er .msg {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.qrow .det {
+  flex-basis: 100%;
+  margin: 0 0 0 24px;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition:
+    grid-template-rows 0.22s var(--ease),
+    margin 0.22s var(--ease);
+}
+.qrow .det.open {
+  grid-template-rows: 1fr;
+  margin: 6px 0 2px 24px;
+}
+.qrow .det > div {
+  overflow: hidden;
+}
+.qrow .att {
+  padding: 6px 0;
+  border-top: 1px solid var(--queue-row-line);
+}
+.qrow .att:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.qrow .am {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.qrow .am .code {
+  color: var(--bad);
+}
+.qrow .ax {
+  font: 11.5px/1.45 var(--mono);
+  color: var(--fg);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.qrow .copy {
+  margin-top: 4px;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: 11.5px var(--sans);
+  color: var(--dim);
+  cursor: pointer;
+}
+.qrow .copy:hover {
+  color: var(--fg);
+}
+.qrow .copy.ok {
+  color: var(--run);
+}
+.qrow .copy.bad {
+  color: var(--bad);
 }
 .qrow:last-child {
   border-bottom: 0;
@@ -1930,6 +2018,7 @@ article.gone {
 }
 :root {
   --spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --queue-row-line: #ffffff08;
   --queue-bg: #11161a;
   --queue-run: #55c2a20d;
   --arrive-start: #55c2a233;
@@ -1940,6 +2029,7 @@ article.gone {
   --morph-bg: #18241f;
 }
 html.light {
+  --queue-row-line: #00000008;
   --queue-bg: var(--raise);
   --queue-run: #107a5c0d;
   --arrive-start: #107a5c26;
@@ -1951,6 +2041,7 @@ html.light {
 }
 @media (prefers-color-scheme: light) {
   :root:not(.dark) {
+    --queue-row-line: #00000008;
     --queue-bg: var(--raise);
     --queue-run: #107a5c0d;
     --arrive-start: #107a5c26;
@@ -2030,6 +2121,8 @@ article .check:focus-visible {
   .selbar,
   .queue,
   .qrow,
+  .qrow .det,
+  .qrow .er .chev,
   .qbar i,
   .morph,
   .slot,

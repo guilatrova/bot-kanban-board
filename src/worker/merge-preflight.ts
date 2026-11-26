@@ -9,6 +9,8 @@ export async function mergePreflight(
   input: MergeInput,
   data: Snapshot,
   recordMerged: (row: MergedPr) => void,
+  removeOpen: (key: string) => void,
+  publish: () => void,
 ): Promise<Source<PullRequest>> {
   const key = prKey(input)
   const live = await source('gh api graphql', () => readPull(ghPath, input))
@@ -16,9 +18,8 @@ export async function mergePreflight(
   if (live.value.merged || live.value.closed) {
     if (live.value.merged) recordMerged(live.value.row)
     else {
-      const before = data.prs.length
-      data.prs = data.prs.filter((p) => prKey(p) !== key)
-      data.total -= before - data.prs.length
+      removeOpen(key)
+      publish()
     }
     return {
       ok: false as const,
@@ -29,6 +30,7 @@ export async function mergePreflight(
   }
   const current = live.value.pr
   data.prs = data.prs.map((p) => (prKey(p) === key ? current : p))
+  publish()
   if (current.sha !== input.sha || current.updated !== input.updated)
     return {
       ok: false as const,

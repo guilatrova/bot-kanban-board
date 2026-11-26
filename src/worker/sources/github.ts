@@ -6,6 +6,7 @@ import { runCli } from '../cli'
 import { obj, rows, str, num, mappingFields, pullRequest, fileChange } from '../../core/normalize'
 import { reader, source } from './read'
 const pullFields = `number title url isDraft isCrossRepository headRefOid headRefName baseRefName body updatedAt additions deletions changedFiles mergeable repository{nameWithOwner} closingIssuesReferences(first:10){nodes{number repository{nameWithOwner}}} commits(last:1){nodes{commit{statusCheckRollup{state}}}}`
+const stateFields = 'state mergedAt ' + pullFields
 const searchQuery = (fields: string) =>
   `query($search:String!,$after:String){search(query:$search,type:ISSUE,first:40,after:$after){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{ ${fields} }}}}`
 const logins = new Map<string, string>()
@@ -36,7 +37,8 @@ function syncRow(value: unknown): SyncRow {
   const raw = obj(value)
   const state = raw.state
   if (state !== 'OPEN' && state !== 'CLOSED' && state !== 'MERGED') throw Error('Unknown pull request state.')
-  return { state, pr: pullRequest(raw), mergedAt: typeof raw.mergedAt === 'string' ? raw.mergedAt : undefined }
+  const pr = pullRequest(raw)
+  return state === 'MERGED' ? { state, pr, mergedAt: str(raw, 'mergedAt') } : { state, pr }
 }
 async function searchPulls<T>(path: string, search: string, fields: string, normalize: (value: unknown) => T) {
   const read = reader('gh', path)
@@ -96,7 +98,7 @@ export function github(
       const changes = await searchPulls(
         path,
         'is:pr user:' + login + ' updated:>=' + since + ' sort:updated-desc',
-        pullFields + ' state mergedAt',
+        stateFields,
         syncRow,
       )
       if (!changes.after) {
@@ -234,8 +236,8 @@ export function readPull(path: string, input: { repo: string; number: number }) 
       'api',
       'graphql',
       '-f',
-      'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){state mergedAt ' +
-        pullFields +
+      'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){' +
+        stateFields +
         '}}}',
       '-f',
       'owner=' + owner,
@@ -245,21 +247,10 @@ export function readPull(path: string, input: { repo: string; number: number }) 
       'number=' + input.number,
     ],
     (value) => {
-      const pr = obj(obj(obj(obj(value).data).repository).pullRequest)
-      if (pr.state === 'MERGED')
-        return {
-          merged: true as const,
-          row: {
-            ...pullRequest(pr),
-            ...input,
-            title: str(pr, 'title'),
-            url: str(pr, 'url'),
-            mergedAt: str(pr, 'mergedAt'),
-          },
-        }
-      if (pr.state === 'CLOSED') return { closed: true as const, merged: false as const }
-      if (pr.state !== 'OPEN') throw Error('Pull request is no longer open.')
-      return { merged: false as const, pr: pullRequest(pr) }
+      const row = syncRow(obj(obj(obj(value).data).repository).pullRequest)
+      if (row.state === 'MERGED') return { merged: true as const, row: { ...row.pr, mergedAt: row.mergedAt } }
+      if (row.state === 'CLOSED') return { closed: true as const, merged: false as const }
+      return { merged: false as const, pr: row.pr }
     },
   )
 }

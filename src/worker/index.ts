@@ -37,10 +37,14 @@ export default async function activate(orca: OrcaWorkerApi) {
   const saved = savedBoard(orca.storage, data, report)
   if (!demo) await Promise.all([saved.load('orca'), saved.load('github')])
   const landed = new Map<string, MergedPr>()
+  function removeOpen(key: string) {
+    const before = data.prs.length
+    data.prs = data.prs.filter((p) => prKey(p) !== key)
+    data.total = Math.max(0, data.total - (before - data.prs.length))
+  }
   function recordMerged(row: MergedPr) {
     const key = prKey(row)
-    if (data.prs.some((p) => prKey(p) === key)) data.total = Math.max(0, data.total - 1)
-    data.prs = data.prs.filter((p) => prKey(p) !== key)
+    removeOpen(key)
     if (mergedToday([row]).length) {
       landed.set(key, row)
       data.merged = mergedToday([row, ...data.merged.filter((p) => prKey(p) !== key)])
@@ -225,8 +229,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     try {
       const result = await closePr(await path('ghPath'), pr)
       if (result.ok) {
-        data.prs = data.prs.filter((p) => prKey(p) !== key)
-        data.total = Math.max(0, data.total - 1)
+        removeOpen(key)
         publish()
       }
       return result
@@ -262,7 +265,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     try {
       let current = pr
       if (!demo) {
-        const live = await mergePreflight(await path('ghPath'), input, data, recordMerged)
+        const live = await mergePreflight(await path('ghPath'), input, data, recordMerged, removeOpen, publish)
         if (!live.ok) return live
         current = live.value
       }
@@ -282,13 +285,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       const result = demo
         ? await demoMerge(current, progress, ready, false)
         : await mergePr(await path('ghPath'), current, input, progress, ready)
-      if (result.ok) {
-        const row = {
-          ...current,
-          mergedAt: new Date().toISOString(),
-        }
-        recordMerged(row)
-      }
+      if (result.ok) recordMerged({ ...current, mergedAt: new Date().toISOString() })
       return result
     } finally {
       data.running = data.running?.filter((k) => k !== key)

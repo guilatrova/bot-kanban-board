@@ -14,7 +14,9 @@ export function syncMode(state: SyncMetadata, { now, login, manual }: { now: Dat
     ? 'incremental'
     : 'full'
 }
-export type SyncRow = { state: 'OPEN' | 'CLOSED' | 'MERGED'; pr: PullRequest; mergedAt?: string }
+export type SyncRow =
+  | { state: 'OPEN' | 'CLOSED'; pr: PullRequest }
+  | { state: 'MERGED'; pr: PullRequest; mergedAt: string }
 export function applyIncremental(
   state: { prs: PullRequest[]; merged: MergedPr[]; total: number; allOpenLoaded?: boolean },
   rows: SyncRow[],
@@ -22,11 +24,12 @@ export function applyIncremental(
 ) {
   const open = new Map(state.prs.map((pr) => [prKey(pr), pr]))
   const merged = new Map(state.merged.map((pr) => [prKey(pr), pr]))
-  for (const { state, pr, mergedAt } of rows) {
+  for (const row of rows) {
+    const { state, pr } = row
     const key = prKey(pr)
     if (state === 'OPEN') open.set(key, pr)
     else open.delete(key)
-    if (state === 'MERGED' && mergedAt) merged.set(key, { ...pr, mergedAt })
+    if (state === 'MERGED') merged.set(key, { ...pr, mergedAt: row.mergedAt })
   }
   const prs = [...open.values()].sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))
   return {

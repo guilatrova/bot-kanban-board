@@ -16,6 +16,16 @@ export function isChunkRecord(value: unknown): value is ChunkRecord {
   )
 }
 
+export function storageGroup(key: string) {
+  if (key.startsWith('avatar-')) return 'avatars'
+  return key.replace(/[a-f0-9]{64}\d+$/, '')
+}
+
+export async function deleteChunks(storage: StorageApi, key: string, record: ChunkRecord) {
+  await storage.delete(key)
+  await Promise.all(Array.from({ length: record.count }, (_, i) => storage.delete(key + record.hash + i)))
+}
+
 export async function readChunks(storage: StorageApi, key: string, record: ChunkRecord) {
   const parts = await Promise.all(Array.from({ length: record.count }, (_, i) => storage.get(key + record.hash + i)))
   if (!parts.every((p): p is string => typeof p === 'string')) return null

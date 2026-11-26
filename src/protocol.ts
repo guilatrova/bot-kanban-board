@@ -42,6 +42,7 @@ export interface Snapshot extends SyncMetadata {
 export type Chunk = { index: number; count: number; data: string }
 declare module 'orca' {
   interface PluginRequests {
+    'storage.failure': { input: { key: string; valueBytes: number; error: string }; output: null }
     'bot.tell': { input: BotMessage; output: boolean }
     'board.visibility': { input: { shown: boolean; initial?: boolean }; output: null }
     'board.get': { input: { index: number; fresh?: boolean }; output: Chunk }

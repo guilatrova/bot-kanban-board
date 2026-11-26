@@ -1,3 +1,4 @@
+import { setStorage } from './storage'
 import { mergeToasts } from './merge-toasts'
 import { settings, type readMergeSettings } from './settings'
 import { land, mergedRow } from './merge-landing'
@@ -30,7 +31,7 @@ export function view(
     if (snapshot) draw(snapshot)
   }
   const update = () => {
-    void orca.storage.set(snapshot?.demo ? 'demo-views' : 'views', saved).catch(notice)
+    void setStorage(snapshot?.demo ? 'demo-views' : 'views', saved).catch(notice)
     redraw()
   }
   const actions = itemActions(store, redraw)
@@ -84,7 +85,7 @@ export function view(
   const columns = new Map<Lane, ReturnType<typeof makeLane>>()
   const zones = dropZones(columns, queue.panel, actions.move, start, (pr) => void confirm(pr, true).catch(notice))
   for (const key of laneKeys) {
-    const col = makeLane(key, collapsed, () => orca.storage.set('collapsed', [...collapsed]))
+    const col = makeLane(key, collapsed, () => setStorage('collapsed', [...collapsed]))
     const { lane } = col
     if (key === 'prs') lanes.append(divider())
     lanes.append(lane)
@@ -315,8 +316,6 @@ export function view(
         const splitStack = prs.some((pr, index) => pr.behind && (positions.get(pr.behind) ?? -1) > index)
         if (splitStack) {
           nodes.push(...board.ordered.map(card))
-          if (data.total > data.prs.length)
-            nodes.push(el('small', data.prs.length + ' loaded of ' + data.total + ' open'))
         } else {
           nodes.push(...board.ready.map(card))
           if (board.draft.length) nodes.push(drafts, ...board.draft.map(card))

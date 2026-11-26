@@ -1,3 +1,4 @@
+import { setStorage } from './storage'
 import manifest from '../orca-plugin.json'
 import { mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
 import { botKey, type Computer } from '../src/core/model'
@@ -26,7 +27,7 @@ export async function readMergeSettings(demo: boolean) {
   return {
     prefs,
     save: () => {
-      void orca.storage.set(key, prefs).catch(notice)
+      void setStorage(key, prefs).catch(notice)
     },
   }
 }

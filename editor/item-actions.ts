@@ -1,3 +1,4 @@
+import { setStorage } from './storage'
 import { isClosed, itemKey, type Item } from '../src/core/model'
 import {
   moveState,
@@ -18,7 +19,7 @@ export async function readActions(demo: boolean) {
   const key = demo ? 'demo-actions' : 'actions'
   const stored = await orca.storage.get(key)
   const state = parseActions(stored)
-  return { state, save: () => orca.storage.set(key, state) }
+  return { state, save: () => setStorage(key, state) }
 }
 export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redraw: () => void) {
   const { state, save } = store

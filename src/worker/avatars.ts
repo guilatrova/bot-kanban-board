@@ -1,10 +1,11 @@
-import { chunkSize, digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
+import { chunkSize, deleteChunks, digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { StorageApi } from 'orca'
 import type { Computer } from '../core/model'
 import { withTerminal } from './terminal'
 
+const maxStoredBytes = 64 * 1024
 const freshness = 6 * 60 * 60_000
 const cacheKey = (computer: string, bot: string) => 'avatar-' + digest(JSON.stringify([computer, bot])).slice(0, 24)
 const validPng = (bytes: Buffer) => bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
@@ -39,10 +40,15 @@ const transfer =
   " exec bash -c '" +
   [
     'set -e',
-    'hash=$(shasum -a 256 < avatar.png)',
+    'tmp=$(mktemp -d)',
+    'trap "rm -rf \\"$tmp\\"" EXIT',
+    'file="$tmp/avatar.png"',
+    'cp avatar.png "$file"',
+    'if command -v sips >/dev/null; then sips -Z 128 "$file" >/dev/null || file=avatar.png; elif command -v magick >/dev/null; then magick "$file" -resize "128x128>" "$file" || file=avatar.png; elif command -v convert >/dev/null; then convert "$file" -resize "128x128>" "$file" || file=avatar.png; fi',
+    'hash=$(shasum -a 256 < "$file")',
     'echo BOARDHASH=${hash%% *}',
     'while read -r -t 60 n; do echo BOARDSTART=$n',
-    `dd if=avatar.png bs=${transferSize} skip="$n" count=1 2>/dev/null | base64 | tr -d "\\n" | fold -w 1024`,
+    `dd if="$file" bs=${transferSize} skip="$n" count=1 2>/dev/null | base64 | tr -d "\\n" | fold -w 1024`,
     'printf "\\nBOARDDONE=%s\\n" "$n"',
     'done',
   ].join('; ') +
@@ -68,7 +74,7 @@ async function remoteImage(path: string, computer: string, home: string, previou
   })
 }
 
-export function avatars(storage: StorageApi) {
+export function avatars(storage: StorageApi, log: (error: unknown) => Promise<void>) {
   const jobs = new Map<string, { time: number; picture: Promise<Buffer | null> }>()
   async function load(key: string, computer: string, home: string | null, path: string, memory: Buffer | null) {
     const meta = await storage.get(key)
@@ -80,6 +86,11 @@ export function avatars(storage: StorageApi) {
     if (!result) return existing
     const image = result.bytes ?? existing
     if (!image || !validPng(image)) return existing
+    if (image.length > maxStoredBytes) {
+      await log({ key, bytes: image.length, message: 'Avatar exceeds 64 KiB and is cached in memory only.' })
+      if (previous) await deleteChunks(storage, key, previous).catch(log)
+      return image
+    }
     try {
       await writeChunks(
         storage,
@@ -88,8 +99,8 @@ export function avatars(storage: StorageApi) {
         { computer },
         !existing && previous?.hash === result.hash ? undefined : previous,
       )
-    } catch {
-      // An image that exceeds the shared storage quota remains usable in memory.
+    } catch (error) {
+      await log({ key, bytes: image.length, error })
     }
     return image
   }
@@ -151,5 +162,14 @@ export function avatars(storage: StorageApi) {
     }
     lastRoster = roster
   }
-  return { get, prune }
+  async function clearOversized() {
+    for (const key of await storage.keys()) {
+      if (!/^avatar-[a-f0-9]{24}$/.test(key)) continue
+      const record = await storage.get(key)
+      if (!isChunkRecord(record)) continue
+      if (record.count > 1 || ((await readChunks(storage, key, record))?.length ?? 0) > maxStoredBytes)
+        await deleteChunks(storage, key, record)
+    }
+  }
+  return { get, prune, clearOversized }
 }

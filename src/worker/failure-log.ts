@@ -1,3 +1,6 @@
+import type { OrcaWorkerApi } from 'orca/worker'
+import type { StorageApi } from 'orca'
+import { storageGroup } from './chunked-storage'
 import { appendFile, mkdir, readdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inspect } from 'node:util'
@@ -42,7 +45,14 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
           await prune(now)
           lastDay = day
         }
-        const line = [now.toISOString(), step, repo ?? '', number === undefined ? '' : '#' + number, errorText(error)]
+        const line = [
+          now.toISOString(),
+          now.toTimeString(),
+          step,
+          repo ?? '',
+          number === undefined ? '' : '#' + number,
+          errorText(error),
+        ]
           .map((field) => field.replace(/\r\n|[\r\n]/g, '\\n').replace(/\t/g, '\\t'))
           .join('\t')
         await appendFile(join(logs, day + '.log'), line + '\n', { flag: 'a' })
@@ -71,5 +81,45 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
       }
     }
   }
-  return { write, logged }
+  let lastStorageFailure = -Infinity
+  async function storageFailure(storage: StorageApi, key: string, valueBytes: number, error: string) {
+    if (Date.now() - lastStorageFailure < 60_000) return
+    lastStorageFailure = Date.now()
+    const groups: Record<string, number> = Object.create(null)
+    try {
+      const keys = await storage.keys()
+      let totalBytes = 2
+      for (const [index, k] of keys.entries()) {
+        const size =
+          Buffer.byteLength(JSON.stringify(k)) +
+          1 +
+          Buffer.byteLength(JSON.stringify(await storage.get(k))) +
+          Number(index > 0)
+        totalBytes += size
+        const group = storageGroup(k)
+        groups[group] = (groups[group] ?? 0) + size
+      }
+      await write({ step: 'storage write', error: { key, valueBytes, error, totalBytes, groups } })
+    } catch (cause) {
+      await write({ step: 'storage write', error: { key, valueBytes, error, inventoryError: String(cause) } })
+    }
+  }
+  function loggedStorage(orca: OrcaWorkerApi): StorageApi {
+    orca.panels.handle('storage.failure', async ({ key, valueBytes, error }) => {
+      await storageFailure(orca.storage, key, valueBytes, error)
+      return null
+    })
+    return {
+      ...orca.storage,
+      async set(key, value) {
+        try {
+          await orca.storage.set(key, value)
+        } catch (error) {
+          await storageFailure(orca.storage, key, Buffer.byteLength(JSON.stringify(value)), String(error))
+          throw error
+        }
+      },
+    }
+  }
+  return { write, logged, loggedStorage }
 }

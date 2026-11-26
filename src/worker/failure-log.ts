@@ -105,6 +105,10 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
     }
   }
   function loggedStorage(orca: OrcaWorkerApi): StorageApi {
+    orca.panels.handle('panel.failure', async (error) => {
+      await write({ step: error.method, error })
+      return null
+    })
     orca.panels.handle('storage.failure', async ({ key, valueBytes, error }) => {
       await storageFailure(orca.storage, key, valueBytes, error)
       return null

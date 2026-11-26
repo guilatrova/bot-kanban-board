@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import { el, external, describeFailure } from './dom'
 import { prKey, type FileChange, type MappedPr } from '../src/core/model'
 export async function showFiles(parent: HTMLElement, pr: MappedPr) {
@@ -5,7 +6,7 @@ export async function showFiles(parent: HTMLElement, pr: MappedPr) {
   try {
     let json = ''
     for (;;) {
-      const result = await orca.plugin.request(
+      const result = await panelRequest(
         'pr.files',
         { key: prKey(pr), updated: pr.updated, offset: json.length },
         { timeoutMs: 60000 },

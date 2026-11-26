@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import type { Failure } from '../src/core/model'
 function hideIds(text: string) {
   return text.replace(
@@ -81,7 +82,7 @@ async function loadAvatar(computer: string, bot: string) {
   let offset = 0
   const parts = ['data:image/png;base64,']
   for (;;) {
-    const part = await orca.plugin.request('avatar.get', { computer, bot, offset }, { timeoutMs: 120000 })
+    const part = await panelRequest('avatar.get', { computer, bot, offset }, { timeoutMs: 120000 })
     if (!part) return null
     parts.push(part.data)
     if (part.next === null) return parts.join('')

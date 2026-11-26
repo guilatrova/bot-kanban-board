@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import { el, button, age, labels, notice, prPill, external, badge } from './dom'
 import { countLabel } from './pr-labels'
 import { showFiles } from './diff'
@@ -27,7 +28,7 @@ export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: It
   function workspace(w: Workspace) {
     body.append(
       button('Open ' + w.name, async () =>
-        notice(await orca.plugin.request('board.jump', { computer: w.computer, bot: w.bot, workspace: w.id })),
+        notice(await panelRequest('board.jump', { computer: w.computer, bot: w.bot, workspace: w.id })),
       ),
     )
   }
@@ -42,7 +43,7 @@ export function drawers(openMerge: (p: MappedPr) => void, statusSelector: (i: It
       ...(isClosed(i.status) ? [] : [statusSelector(i)]),
     )
     const answer = async () =>
-      notice(await orca.plugin.request('board.jump', { computer: i.computer, bot: i.bot, number: i.number }))
+      notice(await panelRequest('board.jump', { computer: i.computer, bot: i.bot, number: i.number }))
     if (i.status === 'needs_you') {
       section('Question', i.question)
       for (const opt of i.options) body.append(el('p', opt, 'option'))

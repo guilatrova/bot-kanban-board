@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import { type Board, toggleBot } from '../src/core/board'
 import { botKey, type Workspace } from '../src/core/model'
 import type { Snapshot } from '../src/protocol'
@@ -16,7 +17,7 @@ export function boardHeader(
   const header = el('header'),
     hosts = el('div', '', 'chips'),
     filters = el('div', '', 'chips bot-chips'),
-    updated = button('', () => orca.plugin.request('board.refresh'), 'stamp'),
+    updated = button('', () => panelRequest('board.refresh'), 'stamp'),
     unreachable = el('div', '', 'chips'),
     lanes = el('main'),
     message = el('div', '', 'message')

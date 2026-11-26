@@ -39,9 +39,21 @@ export interface Snapshot extends SyncMetadata {
   running?: string[]
   focus: boolean
 }
+// Orca maps uncoded exceptions from our worker handlers to action_failed.
+export const workerRejectionCodes: ReadonlySet<string> = new Set(['action_failed'])
+export type PanelRejection = {
+  method: string
+  name: string | null
+  code: string | null
+  message: string
+  retryable: boolean | null
+  stack: string | null
+  calls: string[]
+}
 export type Chunk = { index: number; count: number; data: string }
 declare module 'orca' {
   interface PluginRequests {
+    'panel.failure': { input: PanelRejection; output: null }
     'storage.failure': { input: { key: string; valueBytes: number; error: string }; output: null }
     'bot.tell': { input: BotMessage; output: boolean }
     'board.visibility': { input: { shown: boolean; initial?: boolean }; output: null }

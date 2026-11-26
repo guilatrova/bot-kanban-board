@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import { backoffDelay, retryLabel } from '../src/core/backoff'
 import { skeleton } from './loading'
 import { readMergeSettings } from './settings'
@@ -17,10 +18,10 @@ async function start() {
   state.append(reason, again)
   document.body.append(loading)
   const visibility = (shown: boolean, initial = false) =>
-    orca.plugin.request('board.visibility', { shown, initial }, { timeoutMs: 120000 })
+    panelRequest('board.visibility', { shown, initial }, { timeoutMs: 120000 })
   document.addEventListener('visibilitychange', () => void visibility(!document.hidden).catch(notice))
   window.addEventListener('pagehide', () => void visibility(false).catch(notice))
-  await visibility(!document.hidden, true)
+  await visibility(!document.hidden, true).catch(notice)
   let board: ReturnType<typeof view> | undefined
   let drawn = false
   let latest: Snapshot
@@ -30,7 +31,7 @@ async function start() {
   async function read(fresh = false) {
     const chunks: string[] = []
     for (let index = 0; ; index++) {
-      const chunk = await orca.plugin.request('board.get', { index, fresh }, { timeoutMs: 120000 })
+      const chunk = await panelRequest('board.get', { index, fresh }, { timeoutMs: 120000 })
       chunks.push(chunk.data)
       if (index + 1 === chunk.count) break
     }

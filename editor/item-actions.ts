@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import { setStorage } from './storage'
 import { isClosed, itemKey, type Item } from '../src/core/model'
 import {
@@ -70,7 +71,7 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
         el('p', 'Copy this request, then open the bot chat in Orca and paste it. The bot has not been told.'),
         field,
         button('Open bot chat in Orca', async () => {
-          const result = await orca.plugin.request('board.jump', {
+          const result = await panelRequest('board.jump', {
             computer: item.computer,
             bot: item.bot,
             number: item.number,
@@ -175,7 +176,7 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     }
     parent.node.append(trigger)
     entry('Open chat in Orca', '↵', async () =>
-      notice(await orca.plugin.request('board.jump', { computer: item.computer, bot: item.bot, number: item.number })),
+      notice(await panelRequest('board.jump', { computer: item.computer, bot: item.bot, number: item.number })),
     )
     parent.node.addEventListener('dismiss', () => sub?.close())
     parent.node.addEventListener('keydown', (e) => {

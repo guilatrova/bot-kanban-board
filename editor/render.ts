@@ -1,3 +1,4 @@
+import { panelRequest } from './panel-request'
 import { setStorage } from './storage'
 import { mergeToasts } from './merge-toasts'
 import { settings, type readMergeSettings } from './settings'
@@ -240,7 +241,7 @@ export function view(
             '',
             (e) => {
               e.stopPropagation()
-              return orca.plugin.request('bell.set', { bell, on: !ringing })
+              return panelRequest('bell.set', { bell, on: !ringing })
             },
             'bell',
           )

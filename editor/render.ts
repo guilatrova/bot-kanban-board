@@ -1,5 +1,3 @@
-import { bellToggle } from './bell-toggle'
-import { skeletonCard } from './loading'
 import { mergeToasts } from './merge-toasts'
 import { settings, type readMergeSettings } from './settings'
 import { land, mergedRow } from './merge-landing'
@@ -15,7 +13,7 @@ import type { Snapshot } from '../src/protocol'
 import { patch, el, button, age, badge, prPill, notice, labels } from './dom'
 import { drawers } from './drawer'
 import { mergeDialog } from './merge-dialog'
-import { laneKeys, makeLane, divider, type Lane } from './lanes'
+import { laneKeys, makeLane, divider, icon, type Lane } from './lanes'
 import { boardHeader } from './header'
 import type { Bell } from '../src/core/bells'
 type Row = Item | MappedPr
@@ -103,10 +101,7 @@ export function view(
   group.append(summary, unmapped)
   const drafts = el('h3', 'Draft')
   function focus() {
-    const heading = columns.get('needs_you')?.lane.querySelector('h2')
-    if (heading?.getAttribute('aria-expanded') === 'false') heading.click()
-    columns.get('needs_you')?.lane.scrollIntoView({ block: 'nearest', inline: 'center' })
-    columns.get('needs_you')?.list.querySelector('article')?.focus()
+    columns.get('needs_you')?.focus()
   }
   function draw(data: Snapshot) {
     snapshot = data
@@ -240,7 +235,18 @@ export function view(
         node.append(meta, el('h3', row.title))
         if (!isItem) node.append(select.checkbox(key))
         if (!closed) {
-          meta.append(bellToggle(bell, ringing))
+          const toggle = button(
+            '',
+            (e) => {
+              e.stopPropagation()
+              return orca.plugin.request('bell.set', { bell, on: !ringing })
+            },
+            'bell',
+          )
+          toggle.append(icon('M4 17h16l-2-3V9a6 6 0 0 0-12 0v5zM10 20a2 2 0 0 0 4 0'))
+          toggle.setAttribute('aria-label', 'Notify me')
+          toggle.setAttribute('aria-pressed', String(ringing))
+          meta.append(toggle)
           if (ringing && data.notificationsOff)
             node.append(
               el(
@@ -296,9 +302,6 @@ export function view(
       return node
     }
     for (const [key, col] of columns) {
-      const source = data.sources[key === 'prs' || key === 'merged' ? 'github' : 'orca']
-      col.showSource(source)
-      const { list } = col
       const column = board.columns.find((c) => c.status === key)
 
       let nodes: HTMLElement[] = []
@@ -341,8 +344,7 @@ export function view(
         col.update(column.items.length, column.items)
         nodes = column.items.map(card)
       }
-      const reading = !source.at && source.status !== 'failed'
-      patch(list, reading ? [skeletonCard(prefs.compact, key === 'merged')] : nodes.length ? nodes : [col.empty])
+      col.showCards(nodes, data.sources, prefs.compact)
     }
     for (const key of cards.keys())
       if (!alive.has(key)) {

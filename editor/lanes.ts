@@ -1,6 +1,8 @@
 import { scrollArea } from './scroll-area'
-import { badge, el, labels, notice } from './dom'
-import { itemLanes, botKey, type SourceState } from '../src/core/model'
+import { badge, el, labels, notice, patch } from './dom'
+import { skeletonCard } from './loading'
+import type { Snapshot } from '../src/protocol'
+import { itemLanes, botKey } from '../src/core/model'
 export const laneKeys = [...itemLanes, 'prs', 'merged'] as const
 export type Lane = (typeof laneKeys)[number]
 const drawings = {
@@ -77,8 +79,15 @@ export function makeLane(key: Lane, collapsed: Set<string>, save: () => Promise<
   return {
     lane,
     list,
-    empty,
-    showSource(source: SourceState) {
+    focus() {
+      if (heading.getAttribute('aria-expanded') === 'false') heading.click()
+      lane.scrollIntoView({ block: 'nearest', inline: 'center' })
+      list.querySelector('article')?.focus()
+    },
+    showCards(nodes: HTMLElement[], sources: Snapshot['sources'], compact: boolean) {
+      const source = sources[key === 'prs' || key === 'merged' ? 'github' : 'orca']
+      const reading = !source.at && source.status !== 'failed'
+      patch(list, reading ? [skeletonCard(compact, key === 'merged')] : nodes.length ? nodes : [empty])
       lane.classList.toggle('is-stale', source.status !== 'fresh')
       failure.hidden = source.status !== 'failed'
     },

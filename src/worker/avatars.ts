@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { chunkSize, digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { StorageApi } from 'orca'
@@ -6,9 +6,6 @@ import type { Computer } from '../core/model'
 import { withTerminal } from './terminal'
 
 const freshness = 6 * 60 * 60_000
-const chunkSize = 72 * 1024
-const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex')
-
 const cacheKey = (computer: string, bot: string) => 'avatar-' + digest(JSON.stringify([computer, bot])).slice(0, 24)
 const validPng = (bytes: Buffer) => bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
 
@@ -75,41 +72,25 @@ export function avatars(storage: StorageApi) {
   const jobs = new Map<string, { time: number; picture: Promise<Buffer | null> }>()
   async function load(key: string, computer: string, home: string | null, path: string, memory: Buffer | null) {
     const meta = await storage.get(key)
-    const record = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {}
-    const previous = typeof record.hash === 'string' ? record.hash : null
-    async function cached() {
-      if (!previous || typeof record.count !== 'number') return null
-      const chunks = await Promise.all(Array.from({ length: record.count }, (_, i) => storage.get(key + previous + i)))
-      if (!chunks.every((v): v is string => typeof v === 'string')) return null
-      const bytes = Buffer.from(chunks.join(''), 'base64')
-      return digest(bytes) === previous ? bytes : null
-    }
-    const existing = memory ?? (await cached())
+    const previous = isChunkRecord(meta) ? meta : undefined
+    const existing = memory ?? (previous ? await readChunks(storage, key, previous) : null)
     if (!home) return existing
     const verified = existing ? digest(existing) : null
     const result = await remoteImage(path, computer, home, verified).catch(() => null)
     if (!result) return existing
-    const { hash, bytes } = result
-    const image = bytes ?? existing
+    const image = result.bytes ?? existing
     if (!image || !validPng(image)) return existing
-    const count = Math.ceil(image.length / chunkSize)
-    const written: string[] = []
     try {
-      if (hash !== previous || !existing) {
-        for (let i = 0; i < count; i++) {
-          const part = key + hash + i
-          await storage.set(part, image.subarray(i * chunkSize, (i + 1) * chunkSize).toString('base64'))
-          written.push(part)
-        }
-      }
-      await storage.set(key, { hash, count, computer })
+      await writeChunks(
+        storage,
+        key,
+        image,
+        { computer },
+        !existing && previous?.hash === result.hash ? undefined : previous,
+      )
     } catch {
-      await Promise.allSettled(written.map((part) => storage.delete(part)))
       // An image that exceeds the shared storage quota remains usable in memory.
-      return image
     }
-    if (previous && previous !== hash && typeof record.count === 'number')
-      for (let i = 0; i < record.count; i++) await storage.delete(key + previous + i)
     return image
   }
   async function get(computer: string, bot: string, home: string | null, offset: number, path: string) {

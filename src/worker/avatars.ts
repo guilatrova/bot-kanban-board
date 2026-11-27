@@ -185,42 +185,62 @@ export function serveAvatars(
   path: () => Promise<string>,
 ) {
   orca.panels.handle('avatars.get', async ({ keys }) => {
-    const wanted = new Set(keys)
-    const avatars: Record<string, string> = {}
-    const remaining: string[] = []
-    let size = Buffer.byteLength(JSON.stringify({ avatars, remaining: keys })) + 128
-    const executable = await path()
-    const requests = computers()
-      .flatMap((c) => {
-        if (!c.source.ok) return []
-        const { bots, workspaces } = c.source.value
-        return bots.map((b) => ({
-          key: botKey(c.key, b.name),
-          computer: c.key,
-          bot: b.name,
-          home: b.home ?? workspaces.find((w) => w.bot === b.name && w.home)?.home ?? null,
-        }))
-      })
-      .filter((b) => wanted.has(b.key))
-    for (let start = 0; start < requests.length; start += 6) {
-      const batch = requests.slice(start, start + 6)
-      if (size + Math.ceil(maxStoredBytes / 3) * 4 > responseBudget) {
-        remaining.push(...requests.slice(start).map((b) => b.key))
-        break
-      }
-      const results = await Promise.all(
-        batch.map(async (b) => ({ key: b.key, data: await avatar.get(b.computer, b.bot, b.home, executable) })),
-      )
-      for (const { key, data } of results) {
-        if (!data) continue
-        if (size + data.length + 4 > responseBudget) {
-          remaining.push(key)
-          continue
+    let expired = false
+    let timer: ReturnType<typeof setTimeout>
+    const deadline = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => {
+        expired = true
+        resolve(undefined)
+      }, 60_000)
+    })
+    try {
+      const wanted = new Set(keys)
+      const avatars: Record<string, string> = {}
+      const remaining: string[] = []
+      let size = Buffer.byteLength(JSON.stringify({ avatars, remaining: keys })) + 128
+      const executable = await Promise.race([path(), deadline])
+      if (executable === undefined) return { avatars, remaining: keys }
+      const requests = computers()
+        .flatMap((c) => {
+          if (!c.source.ok) return []
+          const { bots, workspaces } = c.source.value
+          return bots.map((b) => ({
+            key: botKey(c.key, b.name),
+            computer: c.key,
+            bot: b.name,
+            home: b.home ?? workspaces.find((w) => w.bot === b.name && w.home)?.home ?? null,
+          }))
+        })
+        .filter((b) => wanted.has(b.key))
+      for (let start = 0; start < requests.length; start += 6) {
+        const batch = requests.slice(start, start + 6)
+        if (expired || size + Math.ceil(maxStoredBytes / 3) * 4 > responseBudget) {
+          remaining.push(...requests.slice(start).map((b) => b.key))
+          break
         }
-        avatars[key] = data
-        size += data.length + 4
+        const results = await Promise.all(
+          batch.map(async (b) => ({
+            key: b.key,
+            data: await Promise.race([avatar.get(b.computer, b.bot, b.home, executable), deadline]),
+          })),
+        )
+        for (const { key, data } of results) {
+          if (data === undefined) {
+            remaining.push(key)
+            continue
+          }
+          if (!data) continue
+          if (size + data.length + 4 > responseBudget) {
+            remaining.push(key)
+            continue
+          }
+          avatars[key] = data
+          size += data.length + 4
+        }
       }
+      return { avatars, remaining }
+    } finally {
+      clearTimeout(timer!)
     }
-    return { avatars, remaining }
   })
 }

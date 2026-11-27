@@ -20,27 +20,38 @@ const execute = promisify(execFile)
 const cacheKey = (computer: string, bot: string) => 'avatar-' + digest(JSON.stringify([computer, bot])).slice(0, 24)
 const validPng = (bytes: Buffer) => bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
 
+const detectTool =
+  'for tool in sips magick convert; do if command -v "$tool" >/dev/null; then echo "$tool"; exit; fi; done; echo none'
+const toolMarker = /^BOARDTOOL=(sips|magick|convert|none)$/
+
 const resize = [
-  'set -e',
-  'tmp=$(mktemp -d)',
-  'trap "rm -rf \\"$tmp\\"" EXIT',
-  'file="$tmp/avatar.png"',
-  'cp avatar.png "$file"',
-  'if command -v sips >/dev/null; then sips -Z 128 "$file" >/dev/null; elif command -v magick >/dev/null; then magick "$file" -resize "128x128>" "$file"; else convert "$file" -resize "128x128>" "$file"; fi',
-  'test "$(wc -c < "$file")" -le ' + maxStoredBytes,
-]
+  'file=avatar.png',
+  'if test "$(wc -c < "$file")" -gt ' + maxStoredBytes + '; then',
+  '  if test "$tool" = none; then skip; fi',
+  '  tmp=$(mktemp -d)',
+  String.raw`  trap "rm -rf \"$tmp\"" EXIT`,
+  '  file="$tmp/avatar.png"',
+  '  for pixels in 128 64; do',
+  '    if test "$tool" = sips; then sips -Z "$pixels" avatar.png --out "$file" >/dev/null; else "$tool" avatar.png -resize "${pixels}x${pixels}>" "$file"; fi',
+  '    if test "$(wc -c < "$file")" -le ' + maxStoredBytes + '; then break; fi',
+  '  done',
+  '  if test "$(wc -c < "$file")" -gt ' + maxStoredBytes + '; then skip; fi',
+  'fi',
+].join('\n')
 // Orca terminal previews retain about 32 KiB. Request one 18 KiB block at a time.
 const transferSize = 18 * 1024
 const transfer =
   " exec bash -c '" +
   [
     'set -e',
-    'failed() { echo BOARDFAILED; read -r -t 60 ignored || true; exit 1; }',
+    'failed() { echo "BOARDFAILED=$? $BASH_COMMAND"; read -r -t 60 ignored || true; exit 1; }',
     'trap failed ERR',
+    'skip() { echo BOARDSKIP; read -r -t 60 ignored || true; exit; }',
+    'if ! test -e avatar.png; then skip; fi',
     'hash=$(shasum -a 256 < avatar.png)',
     'echo BOARDHASH=${hash%% *}',
-    'read -r -t 60 start',
-    ...resize,
+    'read -r -t 60 tool',
+    resize,
     'resized=$(shasum -a 256 < "$file")',
     'echo BOARDSIZED=${resized%% *}',
     'while read -r -t 60 n; do echo BOARDSTART=$n',
@@ -50,17 +61,27 @@ const transfer =
   ].join('; ') +
   "'"
 
-async function remoteImage(path: string, computer: string, home: string, previous: string | null) {
+async function remoteImage(
+  path: string,
+  computer: string,
+  home: string,
+  previous: string | null,
+  tool: () => Promise<string>,
+) {
   return withTerminal(path, computer, home, 'Board avatar', transfer, async ({ send, until }) => {
     async function readHash(marker: 'BOARDHASH' | 'BOARDSIZED', timeoutMs?: number) {
-      const line = (await until(new RegExp('^(?:' + marker + '=[a-f0-9]{64}|BOARDFAILED)$'), timeoutMs)).at(-1)!
-      if (line === 'BOARDFAILED') throw Error('Avatar command failed before ' + marker)
+      const lines = await until(new RegExp('^(?:' + marker + '=[a-f0-9]{64}|BOARDSKIP|BOARDFAILED=.*)$'), timeoutMs)
+      const line = lines.at(-1)!
+      if (line === 'BOARDSKIP') return null
+      if (line.startsWith('BOARDFAILED=')) throw Error(lines.slice(-3).join('\n'))
       return line.slice(marker.length + 1)
     }
     const hash = await readHash('BOARDHASH')
+    if (!hash) return null
     if (hash === previous) return { hash, bytes: null }
-    await send('resize')
+    await send(await tool())
     const checksum = await readHash('BOARDSIZED', resizeTimeoutMs)
+    if (!checksum) return null
     const blocks: Buffer[] = []
     for (let i = 0; ; i++) {
       await send(String(i))
@@ -79,6 +100,26 @@ async function remoteImage(path: string, computer: string, home: string, previou
 
 export function avatars(storage: StorageApi, log: (error: unknown) => Promise<void>) {
   const retryAfter = new Map<string, number>()
+  const tools = new Map<string, string>()
+  function resizeTool(computer: string, path: string, home: string) {
+    return dedupe('avatar-tool-' + computer, async () => {
+      const known = tools.get(computer)
+      if (known) return known
+      const tool =
+        computer === 'local'
+          ? (await execute('bash', ['-c', detectTool])).stdout.trim()
+          : await withTerminal(
+              path,
+              computer,
+              home,
+              'Board avatar tool',
+              " exec bash -c 'echo BOARDTOOL=$(" + detectTool + "); read -r -t 60 ignored'",
+              async ({ until }) => (await until(toolMarker)).at(-1)!.slice('BOARDTOOL='.length),
+            )
+      tools.set(computer, tool)
+      return tool
+    })
+  }
   const waiting: (() => void)[] = []
   let active = 0
   async function get(computer: string, bot: string, home: string | null, path: string) {
@@ -96,21 +137,36 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
           existing && record && 'source' in record && typeof record.source === 'string' ? record.source : null
         let source: string, bytes: Buffer | null
         if (computer === 'local') {
-          const info = await stat(join(home, 'avatar.png'))
+          const info = await stat(join(home, 'avatar.png')).catch((error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') return null
+            throw error
+          })
+          if (!info) return null
           source = info.mtimeMs + ':' + info.size
           bytes =
             source === previous
               ? null
               : (
-                  await execute('bash', ['-c', [...resize, 'cat "$file"'].join('; ')], {
-                    cwd: home,
-                    timeout: resizeTimeoutMs,
-                    encoding: 'buffer',
-                    maxBuffer: 256 * 1024,
-                  })
+                  await execute(
+                    'bash',
+                    [
+                      '-c',
+                      ['set -e', 'skip() { exit 0; }', 'tool="$1"', resize, 'cat "$file"'].join('; '),
+                      'avatar',
+                      info.size > maxStoredBytes ? await resizeTool(computer, path, home) : 'none',
+                    ],
+                    {
+                      cwd: home,
+                      timeout: resizeTimeoutMs,
+                      encoding: 'buffer',
+                      maxBuffer: 256 * 1024,
+                    },
+                  )
                 ).stdout
+          if (bytes?.length === 0) return null
         } else {
-          const image = await remoteImage(path, computer, home, previous)
+          const image = await remoteImage(path, computer, home, previous, () => resizeTool(computer, path, home))
+          if (!image) return null
           source = image.hash
           bytes = image.bytes
         }
@@ -123,7 +179,7 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
       } catch (error) {
         const firstFailure = !retryAfter.has(key)
         retryAfter.set(key, Date.now() + failureRetryMs)
-        if (firstFailure) await log({ key, error })
+        if (firstFailure) await log({ key, error: String(error) })
         return null
       } finally {
         const next = waiting.shift()

@@ -71,7 +71,10 @@ async function remoteImage(
 ) {
   return withTerminal(path, computer, home, 'Board avatar', transfer, async ({ send, until }) => {
     async function readHash(marker: 'BOARDHASH' | 'BOARDSIZED', timeoutMs?: number) {
-      const lines = await until(new RegExp('^(?:' + marker + '=[a-f0-9]{64}|BOARDSKIP|BOARDFAILED=.*)$'), timeoutMs)
+      const lines = await until(
+        new RegExp('^(?:' + marker + '=[a-f0-9]{64}|BOARDSKIP|BOARDFAILED=\\d+ .*)$'),
+        timeoutMs,
+      )
       const line = lines.at(-1)!
       if (line === 'BOARDSKIP') return null
       if (line.startsWith('BOARDFAILED=')) throw Error(lines.slice(-3).join('\n'))
@@ -104,7 +107,7 @@ async function remoteImage(
 }
 
 export function avatars(storage: StorageApi, log: (error: unknown) => Promise<void>) {
-  const retryAfter = new Map<string, number>()
+  const retryAfter = new Map<string, { at: number; failed: boolean }>()
   const tools = new Map<string, string>()
   function resizeTool(computer: string, detect: () => Promise<string>) {
     return dedupe('avatar-tool-' + computer, async () => {
@@ -121,7 +124,11 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
     if (!home) return null
     const key = cacheKey(computer, bot)
     return dedupe(key, async () => {
-      if ((retryAfter.get(key) ?? 0) > Date.now()) return null
+      function deferRetry(failed = false) {
+        retryAfter.set(key, { at: Date.now() + failureRetryMs, failed })
+        return null
+      }
+      if ((retryAfter.get(key)?.at ?? 0) > Date.now()) return null
       if (active < maxConcurrentReads) active++
       else await new Promise<void>((resolve) => waiting.push(resolve))
       try {
@@ -136,7 +143,7 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
             if (error.code === 'ENOENT') return null
             throw error
           })
-          if (!info) return null
+          if (!info) return deferRetry()
           source = info.mtimeMs + ':' + info.size
           bytes =
             source === previous
@@ -162,10 +169,10 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
                     },
                   )
                 ).stdout
-          if (bytes?.length === 0) return null
+          if (bytes?.length === 0) return deferRetry()
         } else {
           const image = await remoteImage(path, computer, home, previous, (detect) => resizeTool(computer, detect))
-          if (!image) return null
+          if (!image) return deferRetry()
           source = image.hash
           bytes = image.bytes
         }
@@ -176,8 +183,8 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
         retryAfter.delete(key)
         return image.toString('base64')
       } catch (error) {
-        const firstFailure = !retryAfter.has(key)
-        retryAfter.set(key, Date.now() + failureRetryMs)
+        const firstFailure = !retryAfter.get(key)?.failed
+        deferRetry(true)
         if (firstFailure) await log({ key, error: String(error) })
         return null
       } finally {

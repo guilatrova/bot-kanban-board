@@ -46,3 +46,54 @@ export async function refreshItemData(
     report(error)
   }
 }
+
+export function watchItems(
+  orca: OrcaWorkerApi,
+  data: Snapshot,
+  visible: () => boolean,
+  interval: () => number,
+  update: (kind: 'items' | 'trees', environment?: string, bot?: string) => Promise<void>,
+  report: (error: unknown) => void,
+) {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>()
+  function schedule(kind: 'items' | 'trees', workspace?: string | null, session?: string, title?: string) {
+    const matches = data.computers.flatMap((c) => {
+      if (!c.source.ok) return []
+      const { items, workspaces, bots } = c.source.value
+      const bot =
+        items.find((i) => session && i.chatId === session)?.bot ??
+        workspaces.find((w) => workspace && w.id === workspace)?.bot ??
+        bots.find((b) => title === b.name)?.name
+      return bot ? [{ environment: c.key, bot }] : []
+    })
+    const target = matches.length === 1 ? matches[0] : undefined
+    const key = JSON.stringify([kind, target])
+    if (timers.has(key)) return
+    timers.set(
+      key,
+      setTimeout(
+        () => {
+          timers.delete(key)
+          void update(kind, target?.environment, kind === 'items' ? target?.bot : undefined).catch(report)
+        },
+        target ? 100 : 2000,
+      ),
+    )
+  }
+  orca.events.on('agent.status.changed', (e) =>
+    schedule('items', e.workspaceListId ?? e.workspaceId, e.sessionId, e.title),
+  )
+  orca.events.on('workspace.changed', (e) => schedule('items', e.context?.workspaceId))
+  for (const name of ['workspace.created', 'workspace.removed'] as const)
+    orca.events.on(name, (e) => schedule('trees', e.workspaceListId ?? e.workspaceId))
+  async function tick() {
+    try {
+      if (visible()) await update('items')
+    } catch (error) {
+      report(error)
+    } finally {
+      setTimeout(() => void tick(), Math.max(30, interval()) * 1000)
+    }
+  }
+  setTimeout(() => void tick(), Math.max(30, interval()) * 1000)
+}

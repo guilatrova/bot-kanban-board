@@ -1,3 +1,4 @@
+import { count } from './metrics'
 import type { StorageApi } from 'orca'
 import { digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
 
@@ -75,13 +76,19 @@ export async function runCli(
     const record = isChunkRecord(meta) && 'etag' in meta && typeof meta.etag === 'string' ? meta : null
     const previous = record && cache && cacheKey ? await readChunks(cache, cacheKey, record) : null
     const conditional = previous && record ? ['-H', 'If-None-Match: ' + record.etag] : []
+    count(binary === 'gh' ? 'github' : 'orca')
+    if (binary === 'gh' && args[1] === 'graphql') count('graphql')
     const { stdout } = await execute(path, headers ? [args[0]!, '-i', ...conditional, ...args.slice(1)] : args, {
       env,
       timeout: timeoutSeconds * 1000,
       maxBuffer: 64 * 1024 * 1024,
     })
     if (format === 'text') return { ok: true, value: stdout }
-    if (previous && /^HTTP\/[^ ]+ 304\b/.test(stdout)) return { ok: true, value: JSON.parse(previous.toString()) }
+    if (previous && /^HTTP\/[^ ]+ 304\b/.test(stdout)) {
+      count('notModified')
+      count('hits')
+      return { ok: true, value: JSON.parse(previous.toString()) }
+    }
     const body = headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout
     const json: unknown = JSON.parse(body)
     const etag = stdout.split(/\r?\n\r?\n/, 1)[0]?.match(/^etag:[ \t]*([^\r\n]+)/im)?.[1]

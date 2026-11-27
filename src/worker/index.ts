@@ -1,3 +1,7 @@
+import { measure } from './metrics'
+import { dedupe } from './dedupe'
+import { watchItems } from './refresh-items'
+import { invalidateOrca } from './sources/orca'
 import { configureCliCache } from './cli'
 import { serveFiles } from './pr-files'
 import { boardStatus } from './status'
@@ -13,13 +17,18 @@ import { prKey, type Failure } from '../core/model'
 import { refreshItemData } from './refresh-items'
 import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
 import { github, mergePr, closePr } from './sources/github'
-import { openBoard } from './board-file'
+import { registerBoardCommands } from './board-file'
 import { sendBotMessage } from './bot-message'
 import { avatars, serveAvatars } from './avatars'
 import { notifications } from './bells'
 import { jump } from './jump'
 import { demoBoard, demoMerge } from '../demo'
-export default async function activate(orca: OrcaWorkerApi) {
+export default async function activate(host: OrcaWorkerApi) {
+  const { write, logged, loggedStorage } = failureLog(undefined, (message) => host.log(message))
+  const { worker: orca, refresh: measuredRefresh } = measure(
+    host,
+    (step, fields) => void write({ step, fields, error: null }),
+  )
   let settings = await orca.settings.get()
   const demo = settings.demo === true
   orca.settings.onDidChange(() => {
@@ -46,7 +55,6 @@ export default async function activate(orca: OrcaWorkerApi) {
         error: null,
         focus: false,
       }
-  const { write, logged, loggedStorage } = failureLog(undefined, (message) => orca.log(message))
   const report = (error: unknown) => {
     orca.log(String(error))
     void write({ step: 'plugin', error })
@@ -89,12 +97,12 @@ export default async function activate(orca: OrcaWorkerApi) {
   const evaluateBells = await notifications(orca, data, publish, storage)
   let itemJob: Promise<void> | null = null,
     prJob: Promise<void | Failure> | null = null
-  let previousItems = data.sources.orca
   let previousPrs = data.sources.github
   function refreshItems() {
     if (itemJob) return itemJob
-    previousItems = data.sources.orca
-    return (itemJob = refreshItemData(orca, data, path, saved, avatar, evaluateBells, publish)
+    return (itemJob = dedupe('refresh-items', () =>
+      measuredRefresh(() => refreshItemData(orca, data, path, saved, avatar, evaluateBells, publish)),
+    )
       .catch((error) => {
         report(error)
         data.sources.orca = { ...data.sources.orca, status: 'failed' }
@@ -116,46 +124,48 @@ export default async function activate(orca: OrcaWorkerApi) {
       timer = setTimeout(() => void refreshPrs(), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
   }
   const reportRefreshFailure = (error: unknown) => refreshFailure(error, report)
-  function refreshPrs(manual = false): Promise<void | Failure> {
+  function refreshPrs(): Promise<void | Failure> {
     if (limitedUntil > Date.now()) return planPoll().catch(reportRefreshFailure)
 
-    if (prJob) return manual ? prJob.then(() => refreshPrs(true)) : prJob
+    if (prJob) return prJob
     previousPrs = data.sources.github
-    return (prJob = (async () => {
-      const result = await github(await path('ghPath'), new Date())
-      const search = result.ok ? result.value.merged : result
-      if (result.ok && search.ok) {
-        for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
-        data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
-        data.repos = result.value.repos
-        data.merged = mergedToday([...landed.values(), ...search.value.filter((pr) => !landed.has(prKey(pr)))])
-        data.total = result.value.total - (result.value.prs.length - data.prs.length)
-        data.login = result.value.login
-        data.syncedAt = result.value.syncedAt
-        data.fullSyncedAt = result.value.fullSyncedAt
-        data.allOpenLoaded = result.value.allOpenLoaded
-        data.prsAt = Date.now()
-        data.sources.github = { status: 'fresh', at: data.prsAt }
-        data.error = null
+    return (prJob = dedupe('refresh-prs', () =>
+      measuredRefresh(async () => {
+        const result = await github(await path('ghPath'), new Date())
+        const search = result.ok ? result.value.merged : result
+        if (result.ok && search.ok) {
+          for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
+          data.prs = result.value.prs.filter((pr) => !landed.has(prKey(pr)))
+          data.repos = result.value.repos
+          data.merged = mergedToday([...landed.values(), ...search.value.filter((pr) => !landed.has(prKey(pr)))])
+          data.total = result.value.total - (result.value.prs.length - data.prs.length)
+          data.login = result.value.login
+          data.syncedAt = result.value.syncedAt
+          data.fullSyncedAt = result.value.fullSyncedAt
+          data.allOpenLoaded = result.value.allOpenLoaded
+          data.prsAt = Date.now()
+          data.sources.github = { status: 'fresh', at: data.prsAt }
+          data.error = null
+          publish()
+          await saved.save('github')
+          await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded })
+        }
+        if (!search.ok) {
+          data.error = search
+          data.sources.github = { ...data.sources.github, status: 'failed' }
+          const next = retry(search, ++failures, Date.now())
+          retryAt = next.at
+          limitedUntil = next.limited ? retryAt : 0
+          data.banner = next.message
+        } else {
+          data.banner = null
+          failures = 0
+          retryAt = 0
+          limitedUntil = 0
+        }
         publish()
-        await saved.save('github')
-        await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded })
-      }
-      if (!search.ok) {
-        data.error = search
-        data.sources.github = { ...data.sources.github, status: 'failed' }
-        const next = retry(search, ++failures, Date.now())
-        retryAt = next.at
-        limitedUntil = next.limited ? retryAt : 0
-        data.banner = next.message
-      } else {
-        data.banner = null
-        failures = 0
-        retryAt = 0
-        limitedUntil = 0
-      }
-      publish()
-    })()
+      }),
+    )
       .catch((error) => {
         if (data.sources.github === previousPrs) data.sources.github = { ...data.sources.github, status: 'failed' }
         publish()
@@ -166,14 +176,6 @@ export default async function activate(orca: OrcaWorkerApi) {
         await planPoll()
       })
       .catch(reportRefreshFailure))
-  }
-  function refresh(opening = false, manual = false) {
-    if (demo) return
-    if (opening && (!itemJob || data.sources.orca === previousItems)) data.sources.orca.status = 'stale'
-    void refreshItems().catch(report)
-    if (opening && (!prJob || data.sources.github === previousPrs) && limitedUntil <= Date.now())
-      data.sources.github.status = 'stale'
-    if (opening || visible.size) void refreshPrs(manual)
   }
   orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
     const id = context.panel.id
@@ -189,22 +191,35 @@ export default async function activate(orca: OrcaWorkerApi) {
     return null
   })
   const publishSnapshot = serveSnapshots(orca, data, (id, shown) => {
-    if (shown) {
+    if (shown && !demo) {
       visible.add(id)
-      if (visible.size === 1) refresh(true)
+      if (visible.size === 1) {
+        if (!data.itemsAt || data.sources.orca.status === 'stale') void refreshItems()
+        if (
+          !data.prsAt ||
+          data.sources.github.status === 'stale' ||
+          Date.now() - data.prsAt >= Math.max(10, Number(settings.prSeconds) || 90) * 1000
+        )
+          void refreshPrs()
+        else void planPoll()
+      }
     }
   })
   orca.panels.handle(
     'pr.read',
     logged(
       'PR read',
-      async (input) => readBoardPr(await path('ghPath'), input, data, demo, refreshPrs, recordMerged),
+      async (input) => readBoardPr(await path('ghPath'), input, data, demo, async () => publish(), recordMerged),
       readFailureToLog,
     ),
   )
   orca.panels.handle('board.refresh', async () => {
     if (demo) publish()
-    else refresh(false, true)
+    else {
+      if (itemJob) await itemJob
+      invalidateOrca('all')
+      await Promise.all([refreshItems(), refreshPrs()])
+    }
     return null
   })
   serveAvatars(
@@ -221,6 +236,19 @@ export default async function activate(orca: OrcaWorkerApi) {
   orca.panels.handle('board.jump', async (input) =>
     demo ? 'Demo chat selected.' : jump(orca, data.computers, await path('orcaPath'), input),
   )
+  async function reconcile(input: { repo: string; number: number }) {
+    await prJob
+    const result = await readBoardPr(
+      await path('ghPath'),
+      { ...input, prOnly: true },
+      data,
+      false,
+      async () => publish(),
+      recordMerged,
+    )
+    if (!result.ok) report(result)
+    await saved.save('github')
+  }
   orca.panels.handle(
     'pr.close',
     logged('close', async (input) => {
@@ -243,7 +271,7 @@ export default async function activate(orca: OrcaWorkerApi) {
         return result
       } finally {
         closingPrs.delete(key)
-        void Promise.resolve(prJob).then(() => refreshPrs())
+        await reconcile(input)
       }
     }),
   )
@@ -301,47 +329,23 @@ export default async function activate(orca: OrcaWorkerApi) {
       } finally {
         data.running = data.running?.filter((k) => k !== key)
         publish()
-        if (!demo && !input.prOnly) void Promise.resolve(prJob).then(() => refreshPrs())
+        if (!demo) await reconcile(input)
       }
     }),
   )
   serveFiles(orca, storage, data, path, logged)
-  for (const id of ['bot-kanban-board.needs-you', 'bot-kanban-board.open'])
-    orca.commands.register(id, async () => {
-      try {
-        await openBoard(orca, demo ? null : await path('orcaPath'))
-        orca.panels.post('board.focus', null)
-      } catch (error) {
-        const body = String(error) + ' · Reopen Bot Kanban Board from the command palette.'
-        await orca.host.call('statusBar.update', {
-          id: 'needs-you',
-          text: 'Board unavailable',
-          tooltip: body,
-          tone: 'danger',
-        })
-        await orca.host.call('notifications.show', { title: 'Could not open Bot Kanban Board', body })
-      }
-    })
+  registerBoardCommands(orca, async () => (demo ? null : await path('orcaPath')))
   if (demo) return
-  let debounce: ReturnType<typeof setTimeout> | undefined
-  orca.events.on('agent.status.changed', () => {
-    clearTimeout(debounce)
-    debounce = setTimeout(() => void refreshItems().catch(report), 300)
-  })
-  function schedule(key: string, defaultValue: number, job: () => Promise<void>) {
-    async function tick() {
-      try {
-        await job()
-      } catch (e) {
-        report(e)
-      } finally {
-        const seconds = Number(settings[key]) || defaultValue
-        setTimeout(() => void tick().catch(report), Math.max(30, seconds) * 1000)
-      }
-    }
-    void tick().catch(report)
-  }
-  schedule('itemsSeconds', 60, async () => {
-    if (visible.size) await refreshItems()
-  })
+  watchItems(
+    orca,
+    data,
+    () => Boolean(visible.size),
+    () => Number(settings.itemsSeconds) || 60,
+    async (kind, environment, bot) => {
+      if (itemJob) await itemJob
+      invalidateOrca(kind, environment, bot)
+      await refreshItems()
+    },
+    report,
+  )
 }

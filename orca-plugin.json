@@ -31,7 +31,12 @@
     "statusBarItems": [
       { "id": "needs-you", "text": "Needs you \u2026", "icon": "bell", "command": "bot-kanban-board.needs-you" }
     ],
-    "events": [{ "on": "agent.status.changed" }],
+    "events": [
+      { "on": "agent.status.changed" },
+      { "on": "workspace.created" },
+      { "on": "workspace.removed" },
+      { "on": "workspace.changed" }
+    ],
     "settings": [
       { "key": "demo", "type": "boolean", "default": false, "title": "Demo data (restart plugin to apply)" },
       { "key": "orcaPath", "type": "string", "default": "", "title": "Orca executable path" },

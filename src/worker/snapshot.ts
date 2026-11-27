@@ -1,21 +1,21 @@
 import { preferenceKeys } from '../core/startup-preferences'
 import { randomUUID } from 'node:crypto'
 import type { OrcaWorkerApi } from 'orca/worker'
-import { changes } from '../core/snapshot-diff'
+import { changes, applyChanges, type Changes } from '../core/snapshot-diff'
 import { responseBudget, pushBudget, type BoardReply, type Snapshot } from '../protocol'
 
 export function serveSnapshots(orca: OrcaWorkerApi, data: Snapshot, opened: (id: string, visible: boolean) => void) {
   const epoch = randomUUID()
   let revision = 0
   let current = JSON.parse(JSON.stringify(data)) as Snapshot
-  const history = new Map<number, Snapshot>()
+  const history = new Map<number, Changes>()
   const pages = new Map<string, string[]>()
   function publish() {
     const next = JSON.parse(JSON.stringify(data)) as Snapshot
     const diff = changes(current, next)
     if (!Object.values(diff).some(Boolean)) return
     const baseRevision = revision++
-    history.set(baseRevision, current)
+    history.set(baseRevision, changes(next, current))
     history.delete(baseRevision - 20)
     current = next
     const version = { epoch, revision, baseRevision }
@@ -30,12 +30,15 @@ export function serveSnapshots(orca: OrcaWorkerApi, data: Snapshot, opened: (id:
       index = input.index ?? 0
     if (!index) {
       if (input.fresh) opened(id, input.visible !== false)
-      const base =
-        input.epoch === epoch && input.revision !== undefined
-          ? input.revision === revision
-            ? current
-            : history.get(input.revision)
-          : undefined
+      let base: Snapshot | undefined
+      if (
+        input.epoch === epoch &&
+        input.revision !== undefined &&
+        (input.revision === revision || history.has(input.revision))
+      ) {
+        base = current
+        for (let i = revision - 1; i >= input.revision; i--) base = applyChanges(base, history.get(i)!)
+      }
       const reply: BoardReply = base
         ? { epoch, revision, kind: 'diff', changes: changes(base, current) }
         : { epoch, revision, kind: 'full', snapshot: current }

@@ -43,3 +43,22 @@ export async function openBoard(orca: OrcaWorkerApi, path: string | null) {
   await orca.host.call('workspace.open', { workspaceId: workspace.id })
   await orca.host.call('editor.open', { workspaceId: workspace.id, path: file })
 }
+
+export function registerBoardCommands(orca: OrcaWorkerApi, path: () => Promise<string | null>) {
+  for (const id of ['bot-kanban-board.needs-you', 'bot-kanban-board.open'])
+    orca.commands.register(id, async () => {
+      try {
+        await openBoard(orca, await path())
+        orca.panels.post('board.focus', null)
+      } catch (error) {
+        const body = String(error) + ' · Reopen Bot Kanban Board from the command palette.'
+        await orca.host.call('statusBar.update', {
+          id: 'needs-you',
+          text: 'Board unavailable',
+          tooltip: body,
+          tone: 'danger',
+        })
+        await orca.host.call('notifications.show', { title: 'Could not open Bot Kanban Board', body })
+      }
+    })
+}

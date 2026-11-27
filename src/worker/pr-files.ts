@@ -1,3 +1,4 @@
+import { count } from './metrics'
 import { digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
 import { dedupe } from './dedupe'
 import type { OrcaWorkerApi } from 'orca/worker'
@@ -31,8 +32,10 @@ export function serveFiles(
         const record = cacheKey ? await storage.get(cacheKey) : null
         if (cacheKey && isChunkRecord(record)) {
           const bytes = await readChunks(storage, cacheKey, record)
+          if (bytes) count('hits')
           if (bytes) return { ok: true as const, value: bytes.toString() }
         }
+        count('misses')
         const result = await files(await path('ghPath'), pr)
         if (!result.ok) return result
         const json = JSON.stringify(result.value)

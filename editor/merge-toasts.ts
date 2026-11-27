@@ -3,11 +3,62 @@ import { countLabel, shortRef } from '../src/core/presentation'
 import { panelRequest } from './panel-request'
 import type { MergePreferences } from '../src/core/merge'
 import { prKey, type MappedPr } from '../src/core/model'
-import { button, el } from './dom'
+import { button, el, externalLink } from './dom'
 
-export interface MergeResult {
-  pr: MappedPr
-  result: 'merged' | 'failed' | 'merged (manual retry)'
+export type MergeResult = { pr: MappedPr } & (
+  | { result: 'merged' | 'merged (manual retry)' }
+  | { result: 'failed'; reason: string }
+)
+
+function bulkSummary(results: MergeResult[]) {
+  const skipped = results.filter((row) => row.result === 'failed')
+  const merged = results.length - skipped.length
+  const title = [merged && merged + ' merged', skipped.length && skipped.length + ' not merged']
+    .filter(Boolean)
+    .join(' · ')
+  const toast = el('div', '', 'bulk-summary')
+  const head = el('div', '', 'bulk-head')
+  head.append(el('i', '', 'bulk-dot'), el('b', title))
+  toast.append(head)
+  if (!skipped.length) {
+    setTimeout(() => toast.remove(), 3000)
+    return toast
+  }
+
+  toast.classList.add('partial')
+  const copy = button('Copy links', async () => {
+    copy.disabled = true
+    try {
+      await navigator.clipboard.writeText(skipped.map(({ pr }) => pr.url).join('\n'))
+      copy.textContent = 'Copied'
+    } catch {
+      copy.textContent = 'Copy failed'
+    } finally {
+      setTimeout(() => {
+        copy.textContent = 'Copy links'
+        copy.disabled = false
+      }, 1500)
+    }
+  })
+  const close = button('×', () => toast.remove(), 'bulk-close')
+  close.setAttribute('aria-label', 'Close')
+  head.append(copy, close)
+  const rows = el('div', '', 'bulk-rows')
+  const numbers = new Set<number>(),
+    duplicates = new Set<number>()
+  for (const { pr } of skipped) {
+    if (numbers.has(pr.number)) duplicates.add(pr.number)
+    numbers.add(pr.number)
+  }
+  for (const { pr, reason } of skipped) {
+    const row = el('div', '', 'bulk-row')
+    const label = el('span', (duplicates.has(pr.number) ? shortRef(pr) : '#' + pr.number) + ' ')
+    label.append(el('span', reason, 'bulk-reason'))
+    row.append(label, externalLink('Open', pr.url))
+    rows.append(row)
+  }
+  toast.append(rows)
+  return toast
 }
 export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement) {
   const stack = el('div', '', 'toasts')
@@ -38,7 +89,12 @@ export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement
             results.length > 1
               ? 'Batch merged (' + results.filter((r) => r.result !== 'failed').length + '/' + results.length + ')'
               : 'PR merged',
-          body: results.map((r) => prKey(r.pr) + ': ' + r.result + ' ' + r.pr.url).join('\n'),
+          body: results
+            .map(
+              (r) =>
+                prKey(r.pr) + ': ' + (r.result === 'failed' ? 'not merged: ' + r.reason : r.result) + ' ' + r.pr.url,
+            )
+            .join('\n'),
         },
         { timeoutMs: 120000 },
       ),
@@ -87,10 +143,12 @@ export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement
   }
   return (results: MergeResult[], batch: boolean) => {
     if (!results.length || (!batch && results[0]?.result === 'failed')) return
+    if (batch) stack.append(bulkSummary(results))
     if (prefs.tellBot) {
       queue.enqueue(results)
       return
     }
+    if (batch) return
     const toast = el('div', '', 'toast'),
       body = el('div', '', 'tbody'),
       heading = el('strong'),
@@ -98,7 +156,7 @@ export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement
     body.append(heading, detail)
     toast.append(body)
     stack.append(toast)
-    heading.textContent = batch ? 'Batch finished' : 'Merged'
+    heading.textContent = 'Merged'
     detail.textContent = 'No bot was told (turned off in Settings)'
     setTimeout(() => toast.remove(), 3500)
   }

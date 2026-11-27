@@ -6,6 +6,7 @@ export interface BotMessage {
   body: string
 }
 export interface MergeInput {
+  bulk?: boolean
   prOnly?: boolean
   repo: string
   number: number

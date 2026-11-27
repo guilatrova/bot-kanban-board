@@ -1,5 +1,5 @@
 import { panelRequest, PanelError, recentCalls } from './panel-request'
-import type { Progress } from '../src/protocol'
+import type { Progress, Snapshot } from '../src/protocol'
 import {
   fromFailure,
   fromThrown,
@@ -11,7 +11,7 @@ import { mergeErrorDetails } from './merge-error-details'
 import type { MappedPr } from '../src/core/model'
 import { prKey } from '../src/core/model'
 import type { ConfirmedMerge, MergeMethod, MergePreferences } from '../src/core/merge'
-import { mustConfirmMerge } from '../src/core/merge'
+import { assessMerge, bulkBlockerReason, mustConfirmMerge } from '../src/core/merge'
 import { button, el } from './dom'
 import type { mergeDialog } from './merge-dialog'
 import type { MergeResult } from './merge-toasts'
@@ -230,9 +230,44 @@ export function mergeQueue(
         ),
         errors.details,
       )
-      return { pr, result: 'failed' }
+      return { pr, result: 'failed', reason: attempts[attempts.length - 1]!.short }
     }
-    return { run }
+    async function runBulk(repos: Snapshot['repos']): Promise<MergeResult> {
+      active = prKey(pr)
+      state('run', 'merging', '')
+      const skip = (reason: string): MergeResult => ({ pr, result: 'failed', reason })
+      const repo = repos[pr.repo]
+      if (!repo?.ok) return skip('repository settings unavailable')
+      const { blockers, methods, defaultMethod } = assessMerge(pr, repo.value)
+      if (blockers[0]) return skip(bulkBlockerReason[blockers[0]])
+      if (!pr.sha) return skip('missing PR revision, refresh and try again')
+      const method = methods.includes(prefs.mergeMethod) ? prefs.mergeMethod : defaultMethod!
+      const unavailable = "GitHub didn't respond, try again"
+      try {
+        const response = await panelRequest(
+          'pr.merge',
+          {
+            repo: pr.repo,
+            number: pr.number,
+            sha: pr.sha,
+            updated: pr.updated,
+            method,
+            bulk: true,
+          },
+          requestOptions,
+        )
+        if (!response.ok) {
+          const unreachable =
+            response.kind === 'network' || response.kind === 'timeout' || (response.status ?? 0) >= 500
+          return skip(unreachable ? unavailable : fromFailure(response, 'merge').short || 'GitHub declined the merge')
+        }
+      } catch {
+        return skip(unavailable)
+      }
+      await land(pr)
+      return { pr, result: 'merged' }
+    }
+    return { run, runBulk, node }
   }
   return {
     panel,
@@ -242,11 +277,16 @@ export function mergeQueue(
     get active() {
       return active
     },
-    async start(prs: MappedPr[]) {
+    async start(prs: MappedPr[], repos: Snapshot['repos']) {
       if (busy) return
-      const batch = prs.filter((p) => !failed.has(prKey(p)))
+      const bulk = prs.length > 1
+      const batch = bulk ? prs : prs.filter((p) => !failed.has(prKey(p)))
       if (!batch.length) return
       clearTimeout(timer)
+      if (bulk) {
+        failed.clear()
+        body.replaceChildren()
+      }
       if (!failed.size) merged = 0
       busy = true
       panel.classList.add('on')
@@ -257,14 +297,22 @@ export function mergeQueue(
       bar.style.width = '0%'
       try {
         for (const [i, row] of entries.entries()) {
-          const result = await row.run(false)
+          const result = bulk ? await row.runBulk(repos) : await row.run(false)
+          if (bulk) row.node.remove()
           if (result) results.push(result)
           bar.style.width = ((i + 1) / entries.length) * 100 + '%'
         }
         active = ''
-        notify(results, batch.length > 1)
+        notify(results, bulk)
       } finally {
-        totals()
+        if (bulk) {
+          busy = false
+          active = ''
+          panel.classList.remove('on')
+          body.replaceChildren()
+          changed()
+          await panelRequest('board.refresh', undefined)
+        } else totals()
       }
     },
   }

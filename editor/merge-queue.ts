@@ -259,7 +259,7 @@ export function mergeQueue(
         if (!response.ok) {
           const unreachable =
             response.kind === 'network' || response.kind === 'timeout' || (response.status ?? 0) >= 500
-          return skip(unreachable ? unavailable : fromFailure(response, 'merge').short || 'GitHub declined the merge')
+          return skip(unreachable ? unavailable : fromFailure(response, 'merge').short)
         }
       } catch {
         return skip(unavailable)

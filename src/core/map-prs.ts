@@ -9,10 +9,14 @@ export function githubRepo(url: string): string | null {
 export function repoMatch(a: string, b: string) {
   return a.toLowerCase() === (a.includes('/') ? b : b.split('/').pop())?.toLowerCase()
 }
+const referencePattern =
+  /(?:https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(pull|issues)\/(\d+)|(?<![\w./-])([\w.-]+(?:\/[\w.-]+)?)#(\d+))\b/gi
+export function linkedRepo(text: string) {
+  const match = text.matchAll(referencePattern).next().value
+  return match?.[1] ?? match?.[4]
+}
 function mentions(text: string, ref: IssueRef, path: string) {
-  for (const m of text.matchAll(
-    /(?:https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(pull|issues)\/(\d+)|(?<![\w./-])([\w.-]+(?:\/[\w.-]+)?)#(\d+))\b/gi,
-  )) {
+  for (const m of text.matchAll(referencePattern)) {
     const repo = m[1] ?? m[4]
     if (repo && repoMatch(repo, ref.repo) && (!m[2] || m[2] === path) && Number(m[3] ?? m[5]) === ref.number)
       return true

@@ -137,14 +137,13 @@ export function view(
         data.computers.flatMap((c) => (c.source.ok ? c.source.value.items : [])),
         Object.assign({}, ...data.computers.map((c) => (c.source.ok ? c.source.value.closed : {}))),
       )
-    const board = buildBoard(data.computers, data.prs, saved.current, data.merged)
-    sleeping = board.columns.flatMap((c) => c.items.filter(actions.sleep))
-    for (const c of board.columns) c.items = c.items.filter((i) => !actions.sleep(i))
+    const board = buildBoard(data.computers, data.prs, saved.current, data.merged, store.state.sleeps)
+    sleeping = board.sleeping
     snoozed.textContent = 'Snoozed ' + sleeping.length
     actions.syncList(sleeping)
     const prs = [...board.ready, ...board.draft, ...board.unmapped],
       trees = data.computers.flatMap((c) => (c.source.ok ? c.source.value.workspaces : []))
-    header.draw(data, board, trees)
+    header.draw(data, board)
     const animate = cardMotion(cards)
     const alive = new Set<string>()
     function card(row: Item | MappedPr) {
@@ -312,7 +311,7 @@ export function view(
         } else {
           nodes.push(...board.ready.map(card))
           if (board.draft.length) nodes.push(drafts, ...board.draft.map(card))
-          if (board.unmapped.length || data.total > data.prs.length) {
+          if (board.unmapped.length || (saved.current.repos === 'all' && data.total > data.prs.length)) {
             summary.textContent = 'No bot · ' + board.unmapped.length + ' shown of ' + data.total + ' open'
             patch(unmapped, board.unmapped.map(card))
             nodes.push(group)
@@ -337,7 +336,7 @@ export function view(
         col.update(column.items.length, column.items)
         nodes = column.items.map(card)
       }
-      col.showCards(nodes, data.sources, prefs.compact)
+      col.showCards(nodes, data.sources, prefs.compact, saved.current.repos !== 'all')
     }
     for (const key of cards.keys())
       if (!alive.has(key)) {

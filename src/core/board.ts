@@ -1,51 +1,69 @@
-import { botKey, isClosed, itemLane, itemLanes, type Computer, type PullRequest } from './model'
+import { snoozed } from './actions'
+import {
+  itemKey,
+  type Item,
+  type MappedPr,
+  botKey,
+  isClosed,
+  itemLane,
+  itemLanes,
+  type Computer,
+  type PullRequest,
+} from './model'
 import { isToday, type MergedPr } from './merge'
 import { stackOrder } from './stacks'
-import { mapPrs, owners, repoMatch } from './map-prs'
+import { mapPrs, owners, repoMatch, linkedRepo } from './map-prs'
 export type View = { name: string; bots: string[] | 'all'; repos: string[] | 'all'; needsMeOnly: boolean }
 export const allView: View = { name: '', bots: 'all', repos: 'all', needsMeOnly: false }
 export function selectedBots(filter: View['bots'], bots: { computer: string; name: string }[]) {
   const keys = new Set(bots.map((b) => botKey(b.computer, b.name)))
   return new Set(filter === 'all' ? [] : filter.filter((key) => keys.has(key)))
 }
-export function buildBoard(computers: Computer[], prs: PullRequest[], view: View, merged: MergedPr[] = []) {
+export const noRepo = 'No repo'
+export function cardRepo(item: Item, mapped: MappedPr[]) {
+  return mapped.find((p) => p.items.includes(item))?.repo ?? linkedRepo(item.text) ?? noRepo
+}
+export function buildBoard(
+  computers: Computer[],
+  prs: PullRequest[],
+  view: View,
+  merged: MergedPr[] = [],
+  sleeps: Record<string, number> = {},
+  now = Date.now(),
+) {
   const sources = computers.flatMap((c) => (c.source.ok ? [c.source.value] : []))
-  const bots = sources.flatMap((s) => s.bots),
-    items = sources.flatMap((s) => s.items)
-  const selected = selectedBots(view.bots, bots)
+  const rosterBots = sources.flatMap((s) => s.bots)
+  const bots = rosterBots.filter((b) => !b.paused)
+  const paused = new Set(rosterBots.filter((b) => b.paused).map((b) => botKey(b.computer, b.name)))
+  const awake = (owner: { computer: string; bot: string }) => !paused.has(botKey(owner.computer, owner.bot))
+  const rawItems = sources.flatMap((s) => s.items)
+  const items = rawItems.filter(awake)
   const workspaces = sources.flatMap((s) => s.workspaces)
+  const selected = selectedBots(view.bots, bots)
+  const ownedByActive = (row: ReturnType<typeof owners>) =>
+    (!row.items.length && !row.workspaces.length) || [...row.items, ...row.workspaces].some(awake)
   const allPrs = stackOrder(
     mapPrs(
       prs,
-      items.filter((i) => !isClosed(i.status)),
+      rawItems.filter((i) => !isClosed(i.status)),
       workspaces,
-    ),
+    )
+      .filter(ownedByActive)
+      .map((p) => ({ ...p, items: p.items.filter(awake), workspaces: p.workspaces.filter(awake) })),
   )
+  const repoOf = new Map(items.map((i) => [i, cardRepo(i, allPrs)]))
   const acceptsRepo = (repo: string) =>
-    view.repos === 'all' || view.repos.some((r) => repoMatch(repo, r) || repoMatch(r, repo))
-  function itemVisible(i: (typeof items)[number]) {
-    if (!visible(i.computer, i.bot) || (view.needsMeOnly && i.status !== 'needs_you')) return false
-    if (view.repos === 'all') return true
-    const known = [
-      ...allPrs.filter((p) => p.items.includes(i)).map((p) => p.repo),
-      ...workspaces
-        .filter(
-          (w) =>
-            w.computer === i.computer &&
-            w.bot === i.bot &&
-            i.workers.some((worker) => worker.workspace === w.id || worker.workspace === w.name),
-        )
-        .map((w) => w.repo),
-    ]
-    return !known.length || known.some(acceptsRepo)
-  }
+    view.repos === 'all' || !view.repos.length || view.repos.some((r) => repoMatch(r, repo) || repoMatch(repo, r))
   const visible = (c: string, b: string) => !selected.size || selected.has(botKey(c, b))
+  const itemVisible = (i: Item) =>
+    visible(i.computer, i.bot) && (!view.needsMeOnly || i.status === 'needs_you') && acceptsRepo(repoOf.get(i)!)
+  const asleep = (i: Item) => snoozed(i, sleeps[itemKey(i)], now)
+  const eligible = items.filter((i) => !isClosed(i.status) || isToday(new Date(i.updated)))
+  const sleeping = eligible.filter((i) => itemVisible(i) && asleep(i))
   const columns = itemLanes.map((status) => ({
     status,
-    items: items
-      .filter(
-        (i) => itemLane(i.status) === status && (status !== 'closed' || isToday(new Date(i.updated))) && itemVisible(i),
-      )
+    items: eligible
+      .filter((i) => itemLane(i.status) === status && itemVisible(i) && !asleep(i))
       .sort((a, b) => (status === 'needs_you' ? a.updated - b.updated : b.updated - a.updated)),
   }))
 
@@ -58,25 +76,39 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
   )
   const keys = (pr: Pick<(typeof allPrs)[number], 'items' | 'workspaces'>) =>
     new Set([...pr.items, ...pr.workspaces].map((m) => botKey(m.computer, m.bot)))
-  const history = merged.map((pr) => ({ pr, keys: keys(owners(pr, items, workspaces)) }))
-  const active = allPrs.map(keys)
+  const history = merged
+    .map((pr) => ({ pr, ownership: owners(pr, rawItems, workspaces) }))
+    .filter((row) => ownedByActive(row.ownership))
+    .map(({ pr, ownership }) => ({ pr, keys: keys(ownership) }))
+  const active = allPrs.filter((p) => acceptsRepo(p.repo)).map(keys)
+  const repos = new Map<string, number>()
+  for (const repo of [
+    ...eligible.filter((i) => !asleep(i)).map((i) => repoOf.get(i)!),
+    ...allPrs.map((p) => p.repo),
+    ...history.map((h) => h.pr.repo),
+  ])
+    repos.set(repo, (repos.get(repo) ?? 0) + 1)
   const roster = bots.map((b) => {
     const key = botKey(b.computer, b.name)
     const mine = items.filter((i) => i.computer === b.computer && i.bot === b.name)
-    const count = mine.filter((i) => !isClosed(i.status)).length
+    const count = mine.filter((i) => !isClosed(i.status) && acceptsRepo(repoOf.get(i)!)).length
     const cards = count + active.filter((set) => set.has(key)).length
     return {
       ...b,
       count,
       cards,
       chip:
-        cards > 0 ||
+        mine.some((i) => !isClosed(i.status)) ||
+        allPrs.some((p) => keys(p).has(key)) ||
         mine.some((i) => isClosed(i.status) && isToday(new Date(i.updated))) ||
         history.some((row) => row.keys.has(key) && isToday(new Date(row.pr.mergedAt))),
     }
   })
   return {
     columns,
+    sleeping,
+    repos,
+    acceptsRepo,
     selected,
     merged: history
       .filter(
@@ -104,7 +136,7 @@ export function buildBoard(computers: Computer[], prs: PullRequest[], view: View
 }
 export type Board = ReturnType<typeof buildBoard>
 
-export function toggleBot(selected: Set<string>, all: string[], key: string, solo: boolean) {
+export function toggleSelection(selected: Set<string>, all: string[], key: string, solo: boolean) {
   if (solo) return selected.size === 1 && selected.has(key) ? new Set<string>() : new Set([key])
   const current = all.filter((id) => selected.has(id))
   const next = new Set(current.length ? current : all)
@@ -112,3 +144,5 @@ export function toggleBot(selected: Set<string>, all: string[], key: string, sol
   else next.add(key)
   return next.size === all.length ? new Set<string>() : next
 }
+
+export { toggleSelection as toggleBot }

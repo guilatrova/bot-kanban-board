@@ -75,7 +75,8 @@ export function makeLane(key: Lane, collapsed: Set<string>, save: () => Promise<
   }
   sync()
   const empty = el('div', '', 'empty')
-  empty.append(icon(drawings[key][1], 56), el('span', drawings[key][0]))
+  const emptyLabel = el('span')
+  empty.append(icon(drawings[key][1], 56), emptyLabel)
   return {
     lane,
     list,
@@ -84,7 +85,8 @@ export function makeLane(key: Lane, collapsed: Set<string>, save: () => Promise<
       lane.scrollIntoView({ block: 'nearest', inline: 'center' })
       list.querySelector('article')?.focus()
     },
-    showCards(nodes: HTMLElement[], sources: Snapshot['sources'], compact: boolean) {
+    showCards(nodes: HTMLElement[], sources: Snapshot['sources'], compact: boolean, filtered = false) {
+      emptyLabel.textContent = filtered ? 'Nothing here for these repos' : drawings[key][0]
       const source = sources[key === 'prs' || key === 'merged' ? 'github' : 'orca']
       const reading = !source.at && source.status !== 'failed'
       patch(list, reading ? [skeletonCard(compact, key === 'merged')] : nodes.length ? nodes : [empty])

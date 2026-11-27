@@ -1,6 +1,5 @@
-import { snoozed } from './actions'
+import { isAsleep } from './actions'
 import {
-  itemKey,
   type Item,
   type MappedPr,
   botKey,
@@ -12,7 +11,7 @@ import {
 } from './model'
 import { isToday, type MergedPr } from './merge'
 import { stackOrder } from './stacks'
-import { mapPrs, owners, repoMatch, linkedRepo } from './map-prs'
+import { mapPrs, owners, linkedRepo } from './map-prs'
 export type View = { name: string; bots: string[] | 'all'; repos: string[] | 'all'; needsMeOnly: boolean }
 export const allView: View = { name: '', bots: 'all', repos: 'all', needsMeOnly: false }
 export function selectedBots(filter: View['bots'], bots: { computer: string; name: string }[]) {
@@ -20,8 +19,8 @@ export function selectedBots(filter: View['bots'], bots: { computer: string; nam
   return new Set(filter === 'all' ? [] : filter.filter((key) => keys.has(key)))
 }
 export const noRepo = 'No repo'
-export function cardRepo(item: Item, mapped: MappedPr[]) {
-  return mapped.find((p) => p.items.includes(item))?.repo ?? linkedRepo(item.text) ?? noRepo
+export function cardRepo(item: Item, mapped: MappedPr[], knownRepos: string[]) {
+  return mapped.find((p) => p.items.includes(item))?.repo ?? linkedRepo(item.text, knownRepos) ?? noRepo
 }
 export function buildBoard(
   computers: Computer[],
@@ -51,14 +50,37 @@ export function buildBoard(
       .filter(ownedByActive)
       .map((p) => ({ ...p, items: p.items.filter(awake), workspaces: p.workspaces.filter(awake) })),
   )
-  const repoOf = new Map(items.map((i) => [i, cardRepo(i, allPrs)]))
-  const acceptsRepo = (repo: string) =>
-    view.repos === 'all' || !view.repos.length || view.repos.some((r) => repoMatch(r, repo) || repoMatch(repo, r))
+  const knownRepos = [
+    ...new Set(
+      [
+        ...prs.map((pr) => pr.repo),
+        ...merged.map((pr) => pr.repo),
+        ...workspaces.map((w) => w.remote ?? w.repo),
+      ].filter((repo) => repo.includes('/')),
+    ),
+  ]
+  const repoOf = new Map(items.map((i) => [i, cardRepo(i, allPrs, knownRepos)]))
+  const asleep = (i: Item) => isAsleep(i, sleeps, now)
+  const eligible = items.filter((i) => !isClosed(i.status) || isToday(new Date(i.updated)))
+  const keys = (pr: Pick<(typeof allPrs)[number], 'items' | 'workspaces'>) =>
+    new Set([...pr.items, ...pr.workspaces].map((m) => botKey(m.computer, m.bot)))
+  const history = merged
+    .map((pr) => ({ pr, ownership: owners(pr, rawItems, workspaces) }))
+    .filter((row) => ownedByActive(row.ownership))
+    .map(({ pr, ownership }) => ({ pr, keys: keys(ownership) }))
+  const repos = new Map<string, number>()
+  for (const repo of [
+    ...eligible.filter((i) => !asleep(i)).map((i) => repoOf.get(i)!),
+    ...allPrs.map((p) => p.repo),
+    ...history.map((h) => h.pr.repo),
+  ])
+    repos.set(repo, (repos.get(repo) ?? 0) + 1)
+  const selectedRepos = new Set(view.repos === 'all' ? [] : view.repos.filter((repo) => repos.has(repo)))
+  const reposFiltered = selectedRepos.size > 0 && selectedRepos.size < repos.size
+  const acceptsRepo = (repo: string) => !reposFiltered || selectedRepos.has(repo)
   const visible = (c: string, b: string) => !selected.size || selected.has(botKey(c, b))
   const itemVisible = (i: Item) =>
     visible(i.computer, i.bot) && (!view.needsMeOnly || i.status === 'needs_you') && acceptsRepo(repoOf.get(i)!)
-  const asleep = (i: Item) => snoozed(i, sleeps[itemKey(i)], now)
-  const eligible = items.filter((i) => !isClosed(i.status) || isToday(new Date(i.updated)))
   const sleeping = eligible.filter((i) => itemVisible(i) && asleep(i))
   const columns = itemLanes.map((status) => ({
     status,
@@ -74,20 +96,7 @@ export function buildBoard(
       ((p.how === null && selected.size !== 1) ||
         [...p.items, ...p.workspaces].some((m) => visible(m.computer, m.bot))),
   )
-  const keys = (pr: Pick<(typeof allPrs)[number], 'items' | 'workspaces'>) =>
-    new Set([...pr.items, ...pr.workspaces].map((m) => botKey(m.computer, m.bot)))
-  const history = merged
-    .map((pr) => ({ pr, ownership: owners(pr, rawItems, workspaces) }))
-    .filter((row) => ownedByActive(row.ownership))
-    .map(({ pr, ownership }) => ({ pr, keys: keys(ownership) }))
   const active = allPrs.filter((p) => acceptsRepo(p.repo)).map(keys)
-  const repos = new Map<string, number>()
-  for (const repo of [
-    ...eligible.filter((i) => !asleep(i)).map((i) => repoOf.get(i)!),
-    ...allPrs.map((p) => p.repo),
-    ...history.map((h) => h.pr.repo),
-  ])
-    repos.set(repo, (repos.get(repo) ?? 0) + 1)
   const roster = bots.map((b) => {
     const key = botKey(b.computer, b.name)
     const mine = items.filter((i) => i.computer === b.computer && i.bot === b.name)
@@ -109,6 +118,7 @@ export function buildBoard(
     sleeping,
     repos,
     acceptsRepo,
+    reposFiltered,
     selected,
     merged: history
       .filter(
@@ -144,5 +154,3 @@ export function toggleSelection(selected: Set<string>, all: string[], key: strin
   else next.add(key)
   return next.size === all.length ? new Set<string>() : next
 }
-
-export { toggleSelection as toggleBot }

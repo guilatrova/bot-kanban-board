@@ -1,4 +1,4 @@
-import { statuses, type Item } from './model'
+import { isClosed, itemKey, statuses, type Item } from './model'
 
 export const targets = [...statuses, 'done', 'canceled'] as const
 export type Target = (typeof targets)[number]
@@ -39,4 +39,7 @@ export function snoozeUntil(choice: (typeof snoozeChoices)[number], now: number)
 export function snoozed(item: Item, local: number | undefined, now: number) {
   if (item.snoozedUntil && item.snoozedUntil > now) return 'Orca'
   return local && local > now ? 'board' : null
+}
+export function isAsleep(item: Item, sleeps: Record<string, number>, now: number) {
+  return !isClosed(item.status) && snoozed(item, sleeps[itemKey(item)], now)
 }

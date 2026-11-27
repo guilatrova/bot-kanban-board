@@ -311,7 +311,7 @@ export function view(
         } else {
           nodes.push(...board.ready.map(card))
           if (board.draft.length) nodes.push(drafts, ...board.draft.map(card))
-          if (board.unmapped.length || (saved.current.repos === 'all' && data.total > data.prs.length)) {
+          if (board.unmapped.length || (!board.reposFiltered && data.total > data.prs.length)) {
             summary.textContent = 'No bot · ' + board.unmapped.length + ' shown of ' + data.total + ' open'
             patch(unmapped, board.unmapped.map(card))
             nodes.push(group)
@@ -336,7 +336,7 @@ export function view(
         col.update(column.items.length, column.items)
         nodes = column.items.map(card)
       }
-      col.showCards(nodes, data.sources, prefs.compact, saved.current.repos !== 'all')
+      col.showCards(nodes, data.sources, prefs.compact, board.reposFiltered)
     }
     for (const key of cards.keys())
       if (!alive.has(key)) {

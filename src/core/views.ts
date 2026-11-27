@@ -1,7 +1,7 @@
 import { allView, selectedBots, type View } from './board'
 type Saved = { version: 1; current: View; views: View[] }
 export async function storedViews(
-  storage: Pick<import('orca').StorageApi, 'get'>,
+  storage: { get(key: string): Promise<unknown> },
   demo: boolean,
   roster: () => Promise<{ name: string; computer: string }[]>,
 ): Promise<Saved> {

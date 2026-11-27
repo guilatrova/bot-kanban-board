@@ -1,11 +1,11 @@
 import { itemStatusActions } from '../src/core/flags'
 import { panelRequest } from './panel-request'
 import { setStorage } from './storage'
-import { isClosed, itemKey, type Item } from '../src/core/model'
+import { itemKey, type Item } from '../src/core/model'
 import {
   moveState,
   moveTimeout,
-  snoozed,
+  isAsleep,
   snoozeChoices,
   snoozeUntil,
   type Target,
@@ -207,7 +207,6 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     label.append(select)
     return label
   }
-  const sleep = (i: Item) => !isClosed(i.status) && snoozed(i, state.sleeps[itemKey(i)], Date.now())
   let list: HTMLDialogElement | undefined
   function showList(items: Item[]) {
     list = panel('Snoozed Items')
@@ -218,7 +217,7 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     list.querySelector('section')?.remove()
     const section = el('section')
     for (const item of items) {
-      const by = sleep(item)
+      const by = isAsleep(item, state.sleeps, Date.now())
       const row = el('article', '', 'sleeping')
       row.append(
         el('small', item.bot + ' · #' + item.number),
@@ -241,7 +240,6 @@ export function itemActions(store: Awaited<ReturnType<typeof readActions>>, redr
     move,
     menu,
     selector,
-    sleep,
     reconcile,
     showList,
     syncList,

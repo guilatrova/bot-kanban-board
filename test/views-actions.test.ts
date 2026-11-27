@@ -20,7 +20,9 @@ it('filters known repositories and hides unselected unassigned questions', () =>
       },
     },
   ]
-  const result = buildBoard(data, [pr], { ...allView, repos: ['other/repo'], needsMeOnly: true })
+  const result = buildBoard(data, [pr], { ...allView, repos: ['other/repo'], needsMeOnly: true }, [
+    { ...pr, repo: 'other/repo', mergedAt: pr.updated },
+  ])
   expect(result.columns.flatMap((c) => c.items)).toEqual([])
   expect(result.ready).toEqual([])
   const stale = { ...allView, bots: ['removed'], repos: ['sample'] }

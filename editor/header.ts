@@ -115,7 +115,7 @@ export function boardHeader(
       controls.sync()
       repoRows = [...board.repos].sort(([a], [b]) => (a === noRepo ? 1 : b === noRepo ? -1 : a.localeCompare(b)))
       activeRepos = new Set(repoRows.map(([repo]) => repo).filter(board.acceptsRepo))
-      const filtered = activeRepos.size < repoRows.length
+      const filtered = board.reposFiltered
       repoChip.textContent = !filtered
         ? 'All repos'
         : activeRepos.size === 1

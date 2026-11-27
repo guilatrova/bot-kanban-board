@@ -11,9 +11,12 @@ export function repoMatch(a: string, b: string) {
 }
 const referencePattern =
   /(?:https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(pull|issues)\/(\d+)|(?<![\w./-])([\w.-]+(?:\/[\w.-]+)?)#(\d+))\b/gi
-export function linkedRepo(text: string) {
-  const match = text.matchAll(referencePattern).next().value
-  return match?.[1] ?? match?.[4]
+export function linkedRepo(text: string, knownRepos: string[]) {
+  for (const match of text.matchAll(referencePattern)) {
+    const name = match[1] ?? match[4]
+    const repo = name && knownRepos.find((repo) => repoMatch(name, repo))
+    if (repo) return repo
+  }
 }
 function mentions(text: string, ref: IssueRef, path: string) {
   for (const m of text.matchAll(referencePattern)) {

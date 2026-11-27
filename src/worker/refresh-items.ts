@@ -56,17 +56,38 @@ export function watchItems(
   report: (error: unknown) => void,
 ) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
-  function schedule(kind: 'items' | 'trees', workspace?: string | null, session?: string, title?: string) {
+  type Hint = {
+    ids: (string | null | undefined)[]
+    session?: string
+    title?: string
+    name?: string
+    branch?: string
+    path?: string
+  }
+  function schedule(kind: 'items' | 'trees', hint: Hint) {
     const matches = data.computers.flatMap((c) => {
       if (!c.source.ok) return []
       const { items, workspaces, bots } = c.source.value
-      const bot =
-        items.find((i) => session && i.chatId === session)?.bot ??
-        workspaces.find((w) => workspace && w.id === workspace)?.bot ??
-        bots.find((b) => title === b.name)?.name
-      return bot ? [{ environment: c.key, bot }] : []
+      const sessionBot = hint.session && items.find((i) => i.chatId === hint.session)?.bot
+      const trees = workspaces.filter(
+        (w) =>
+          hint.ids.includes(w.id) ||
+          (hint.path && w.path === hint.path) ||
+          (hint.name && w.name === hint.name && w.branch === hint.branch),
+      )
+      const names = sessionBot
+        ? [sessionBot]
+        : trees.length
+          ? trees.map((w) => w.bot)
+          : bots.filter((b) => b.name === hint.title).map((b) => b.name)
+      return [...new Set(names)].map((bot) => ({ environment: c.key, bot }))
     })
-    const target = matches.length === 1 ? matches[0] : undefined
+    const target =
+      matches.length === 1
+        ? matches[0]
+        : matches.length && matches.every((m) => m.environment === matches[0]!.environment)
+          ? { environment: matches[0]!.environment, bot: undefined }
+          : undefined
     const key = JSON.stringify([kind, target])
     if (timers.has(key)) return
     timers.set(
@@ -81,11 +102,13 @@ export function watchItems(
     )
   }
   orca.events.on('agent.status.changed', (e) =>
-    schedule('items', e.workspaceListId ?? e.workspaceId, e.sessionId, e.title),
+    schedule('items', { ids: [e.workspaceId, e.workspaceListId], session: e.sessionId, title: e.title }),
   )
-  orca.events.on('workspace.changed', (e) => schedule('items', e.context?.workspaceId))
+  orca.events.on('workspace.changed', (e) =>
+    schedule('items', { ids: [e.context?.workspaceId], branch: e.context?.branch, name: e.context?.displayName }),
+  )
   for (const name of ['workspace.created', 'workspace.removed'] as const)
-    orca.events.on(name, (e) => schedule('trees', e.workspaceListId ?? e.workspaceId))
+    orca.events.on(name, (e) => schedule('trees', { ids: [e.workspaceId, e.workspaceListId], path: e.path }))
   async function tick() {
     try {
       if (visible()) await update('items')

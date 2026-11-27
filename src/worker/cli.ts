@@ -3,8 +3,10 @@ import type { StorageApi } from 'orca'
 import { digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
 
 let cache: StorageApi | undefined
-export function configureCliCache(storage: StorageApi) {
+let cacheFailure: (e: unknown) => void = console.warn
+export function configureCliCache(storage: StorageApi, report: (e: unknown) => void) {
   cache = storage
+  cacheFailure = report
 }
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
@@ -95,7 +97,8 @@ export async function runCli(
     const body = headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout
     const json: unknown = JSON.parse(body)
     const etag = stdout.split(/\r?\n\r?\n/, 1)[0]?.match(/^etag:[ \t]*([^\r\n]+)/im)?.[1]
-    if (etag && cacheKey && cache) await writeChunks(cache, cacheKey, Buffer.from(body), { etag }, record ?? undefined)
+    if (etag && cacheKey && cache)
+      await writeChunks(cache, cacheKey, Buffer.from(body), { etag }, record ?? undefined).catch(cacheFailure)
     if (binary === 'gh') return { ok: true, value: json }
     if (json && typeof json === 'object' && 'ok' in json && json.ok === true && 'result' in json)
       return { ok: true, value: json.result }

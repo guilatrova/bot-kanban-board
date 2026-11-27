@@ -9,6 +9,7 @@ type Operation = {
   counts: Counts
   active: number
   timer?: ReturnType<typeof setTimeout>
+  panel?: string
   closed?: boolean
 }
 const scope = new AsyncLocalStorage<Operation>()
@@ -24,6 +25,7 @@ export function measure(orca: OrcaWorkerApi, write: (kind: string, fields: strin
   const loads = new Map<string, Operation>()
   const create = (kind: Operation['kind']): Operation => ({ kind, counts: counters(), active: 0 })
   async function run<T>(op: Operation, read: () => Promise<T>, panel?: string) {
+    if (panel) op.panel = panel
     clearTimeout(op.timer)
     op.active++
     try {
@@ -33,7 +35,7 @@ export function measure(orca: OrcaWorkerApi, write: (kind: string, fields: strin
         op.timer = setTimeout(
           () => {
             op.closed = true
-            if (panel && loads.get(panel) === op) loads.delete(panel)
+            if (op.panel && loads.get(op.panel) === op) loads.delete(op.panel)
             write(
               op.kind,
               Object.entries(op.counts).map(([k, v]) => k + '=' + v),

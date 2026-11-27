@@ -39,7 +39,7 @@ export function serveFiles(
         const result = await files(await path('ghPath'), pr)
         if (!result.ok) return result
         const json = JSON.stringify(result.value)
-        if (cacheKey) await writeChunks(storage, cacheKey, Buffer.from(json), {})
+        if (cacheKey) await writeChunks(storage, cacheKey, Buffer.from(json), {}).catch((e) => orca.log(String(e)))
         return { ok: true as const, value: json }
       })
       if (!payload.ok) return payload

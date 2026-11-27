@@ -60,7 +60,7 @@ export default async function activate(host: OrcaWorkerApi) {
     void write({ step: 'plugin', error })
   }
   const storage = loggedStorage(orca)
-  configureCliCache(storage)
+  configureCliCache(storage, report)
   const saved = savedBoard(storage, data, report)
   if (!demo) await Promise.all([saved.load('orca'), saved.load('github')])
   const status = await boardStatus(orca, data, demo, report)

@@ -1,3 +1,4 @@
+import { onStorageWrite } from './storage'
 import { panelRequest } from './panel-request'
 import { backoffDelay, retryLabel } from '../src/core/backoff'
 import { skeleton } from './loading'
@@ -14,6 +15,11 @@ async function start() {
   type Stored = Version & { snapshot: Snapshot; preferences: Preferences }
   const cacheKey = 'bot-board-v1'
   let stored = cached<Stored>(cacheKey)
+  onStorageWrite((key, value) => {
+    if (!stored || !(key in stored.preferences)) return
+    stored.preferences[key] = value
+    persist(cacheKey, stored)
+  })
   const loading = skeleton(false)
   const state = el('div', '', 'first-error')
   state.setAttribute('role', 'alert')
@@ -45,7 +51,12 @@ async function start() {
     for (let index = 0; ; index++) {
       const part = await panelRequest(
         'board.get',
-        { index, fresh, visible: !document.hidden, epoch: stored?.epoch, revision: stored?.revision },
+        {
+          index,
+          fresh,
+          visible: !document.hidden,
+          ...(stored ? { epoch: stored.epoch, revision: stored.revision } : {}),
+        },
         { timeoutMs: 120000 },
       )
       if ('kind' in part) {
@@ -59,6 +70,8 @@ async function start() {
       }
     }
     const snapshot = reply.kind === 'full' ? reply.snapshot : applyChanges(stored!.snapshot, reply.changes)
+    const preferencesChanged =
+      !!stored && !!reply.preferences && JSON.stringify(stored.preferences) !== JSON.stringify(reply.preferences)
     stored = {
       epoch: reply.epoch,
       revision: reply.revision,
@@ -67,29 +80,28 @@ async function start() {
     }
     confirmed = true
     persist(cacheKey, stored)
-    await draw(snapshot)
+    await draw(snapshot, preferencesChanged)
     if (fresh) board?.focus()
   }
-  async function draw(data: Snapshot) {
+  async function draw(data: Snapshot, preferencesChanged = false) {
     latest = data
     if (!data.demo) loadPictures(data.computers, stored!.epoch, confirmed)
-    if (!board) {
+    if (!board || preferencesChanged) {
       const [saved, actions, settings] = await Promise.all([
         readViews(Boolean(data.demo), roster, stored!.preferences),
         readActions(Boolean(data.demo), stored!.preferences),
         readMergeSettings(Boolean(data.demo), stored!.preferences),
       ])
       const collapsed = stored!.preferences.collapsed
-      board = view(
-        saved,
-        settings,
-        actions,
-        new Set<string>(
-          Array.isArray(collapsed)
-            ? collapsed.filter((k): k is string => typeof k === 'string')
-            : ['waiting', 'closed'],
-        ),
+      const folded = new Set<string>(
+        Array.isArray(collapsed) ? collapsed.filter((k): k is string => typeof k === 'string') : ['waiting', 'closed'],
       )
+      if (board) {
+        Object.assign(board.saved, saved)
+        Object.assign(board.prefs, settings.prefs)
+        Object.assign(board.actions, actions.state)
+        board.fold(folded)
+      } else board = view(saved, settings, actions, folded)
     }
     board.draw(data)
     drawn = true

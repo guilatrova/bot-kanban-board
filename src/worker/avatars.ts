@@ -51,6 +51,7 @@ const transfer =
     'hash=$(shasum -a 256 < avatar.png)',
     'echo BOARDHASH=${hash%% *}',
     'read -r -t 60 tool',
+    'if test "$tool" = probe; then echo BOARDTOOL=$(' + detectTool + '); read -r -t 60 tool; fi',
     resize,
     'resized=$(shasum -a 256 < "$file")',
     'echo BOARDSIZED=${resized%% *}',
@@ -66,7 +67,7 @@ async function remoteImage(
   computer: string,
   home: string,
   previous: string | null,
-  tool: () => Promise<string>,
+  tool: (detect: () => Promise<string>) => Promise<string>,
 ) {
   return withTerminal(path, computer, home, 'Board avatar', transfer, async ({ send, until }) => {
     async function readHash(marker: 'BOARDHASH' | 'BOARDSIZED', timeoutMs?: number) {
@@ -79,7 +80,11 @@ async function remoteImage(
     const hash = await readHash('BOARDHASH')
     if (!hash) return null
     if (hash === previous) return { hash, bytes: null }
-    await send(await tool())
+    const selected = await tool(async () => {
+      await send('probe')
+      return (await until(toolMarker)).at(-1)!.slice('BOARDTOOL='.length)
+    })
+    await send(selected)
     const checksum = await readHash('BOARDSIZED', resizeTimeoutMs)
     if (!checksum) return null
     const blocks: Buffer[] = []
@@ -101,21 +106,11 @@ async function remoteImage(
 export function avatars(storage: StorageApi, log: (error: unknown) => Promise<void>) {
   const retryAfter = new Map<string, number>()
   const tools = new Map<string, string>()
-  function resizeTool(computer: string, path: string, home: string) {
+  function resizeTool(computer: string, detect: () => Promise<string>) {
     return dedupe('avatar-tool-' + computer, async () => {
       const known = tools.get(computer)
       if (known) return known
-      const tool =
-        computer === 'local'
-          ? (await execute('bash', ['-c', detectTool])).stdout.trim()
-          : await withTerminal(
-              path,
-              computer,
-              home,
-              'Board avatar tool',
-              " exec bash -c 'echo BOARDTOOL=$(" + detectTool + "); read -r -t 60 ignored'",
-              async ({ until }) => (await until(toolMarker)).at(-1)!.slice('BOARDTOOL='.length),
-            )
+      const tool = await detect()
       tools.set(computer, tool)
       return tool
     })
@@ -153,7 +148,11 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
                       '-c',
                       ['set -e', 'skip() { exit 0; }', 'tool="$1"', resize, 'cat "$file"'].join('; '),
                       'avatar',
-                      info.size > maxStoredBytes ? await resizeTool(computer, path, home) : 'none',
+                      info.size > maxStoredBytes
+                        ? await resizeTool(computer, async () =>
+                            (await execute('bash', ['-c', detectTool])).stdout.trim(),
+                          )
+                        : 'none',
                     ],
                     {
                       cwd: home,
@@ -165,7 +164,7 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
                 ).stdout
           if (bytes?.length === 0) return null
         } else {
-          const image = await remoteImage(path, computer, home, previous, () => resizeTool(computer, path, home))
+          const image = await remoteImage(path, computer, home, previous, (detect) => resizeTool(computer, detect))
           if (!image) return null
           source = image.hash
           bytes = image.bytes

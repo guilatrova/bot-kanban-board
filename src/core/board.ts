@@ -76,7 +76,8 @@ export function buildBoard(
   ])
     repos.set(repo, (repos.get(repo) ?? 0) + 1)
   const selectedRepos = new Set(view.repos === 'all' ? [] : view.repos.filter((repo) => repos.has(repo)))
-  const reposFiltered = view.repos.length === 0 || (selectedRepos.size > 0 && selectedRepos.size < repos.size)
+  const reposFiltered =
+    (view.repos !== 'all' && view.repos.length === 0) || (selectedRepos.size > 0 && selectedRepos.size < repos.size)
   const acceptsRepo = (repo: string) => !reposFiltered || selectedRepos.has(repo)
   const visible = (c: string, b: string) => !selected.size || selected.has(botKey(c, b))
   const itemVisible = (i: Item) =>

@@ -28,8 +28,14 @@ export function popover(anchor: HTMLElement, submenu = false) {
       (el) => el.getClientRects().length,
     )
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
-    if (e.key === 'Escape' || (submenu && e.key === 'ArrowLeft')) close(true)
-    else if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement) return
+    if (e.key === 'Escape') close(true)
+    else if (e.target instanceof HTMLInputElement) {
+      if (e.key !== 'ArrowDown') return
+      const first = node.querySelector<HTMLElement>('[role="menuitemcheckbox"]')
+      if (!first) return
+      first.focus()
+    } else if (submenu && e.key === 'ArrowLeft') close(true)
+    else if (e.target instanceof HTMLSelectElement) return
     else if (['ArrowDown', 'ArrowUp'].includes(e.key))
       buttons[(index + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus()
     else return

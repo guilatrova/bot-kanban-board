@@ -11,7 +11,7 @@ import { mergeErrorDetails } from './merge-error-details'
 import type { MappedPr } from '../src/core/model'
 import { prKey } from '../src/core/model'
 import type { ConfirmedMerge, MergeMethod, MergePreferences } from '../src/core/merge'
-import { canMergeWithoutDialog } from '../src/core/merge'
+import { mustConfirmMerge } from '../src/core/merge'
 import { button, el } from './dom'
 import type { mergeDialog } from './merge-dialog'
 import type { MergeResult } from './merge-toasts'
@@ -96,8 +96,13 @@ export function mergeQueue(
         const same = approved?.sha === fresh.sha
         if (
           !current.facts.ok ||
-          !canMergeWithoutDialog(fresh, current.facts.value, method, same ? approved?.facts : undefined) ||
-          (prefs.askBeforeMerging && !same)
+          mustConfirmMerge(
+            fresh,
+            current.facts.value,
+            method,
+            same ? approved?.facts : undefined,
+            prefs.askBeforeMerging,
+          )
         ) {
           const choice = await new Promise<typeof approved>(
             (resolve, reject) =>

@@ -68,7 +68,7 @@ export function buildBoard(
     .map((pr) => ({ pr, ownership: owners(pr, rawItems, workspaces) }))
     .filter((row) => ownedByActive(row.ownership))
     .map(({ pr, ownership }) => ({ pr, keys: keys(ownership) }))
-  const repos = new Map<string, number>()
+  const repos = new Map<string, number>([[noRepo, 0]])
   for (const repo of [
     ...eligible.filter((i) => !asleep(i)).map((i) => repoOf.get(i)!),
     ...allPrs.map((p) => p.repo),
@@ -76,7 +76,8 @@ export function buildBoard(
   ])
     repos.set(repo, (repos.get(repo) ?? 0) + 1)
   const selectedRepos = new Set(view.repos === 'all' ? [] : view.repos.filter((repo) => repos.has(repo)))
-  const reposFiltered = selectedRepos.size > 0 && selectedRepos.size < repos.size
+  const reposFiltered =
+    (view.repos !== 'all' && view.repos.length === 0) || (selectedRepos.size > 0 && selectedRepos.size < repos.size)
   const acceptsRepo = (repo: string) => !reposFiltered || selectedRepos.has(repo)
   const visible = (c: string, b: string) => !selected.size || selected.has(botKey(c, b))
   const itemVisible = (i: Item) =>

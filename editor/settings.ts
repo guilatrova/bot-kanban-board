@@ -117,11 +117,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
       }
       merging.append(
         row('Merge method', 'Preselected in the merge dialog.', segment),
-        toggle(
-          'askBeforeMerging',
-          'Ask before merging',
-          'Off: clean pull requests merge in one step. Warnings and conflicts always ask.',
-        ),
+        toggle('askBeforeMerging', 'Ask before merging', 'Off: merges run in one step. Blocked merges still ask.'),
       )
       const after = group('After a merge'),
         reveal = el('div', '', 'reveal'),

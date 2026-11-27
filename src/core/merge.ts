@@ -44,6 +44,17 @@ export function canMergeWithoutDialog(
       assessment.methods.includes(method),
   )
 }
+export function mustConfirmMerge(
+  pr: PullRequest & { behind?: string },
+  repo: RepositoryFacts,
+  method: MergeMethod,
+  confirmed: ConfirmedMerge | undefined,
+  askBeforeMerging: boolean,
+) {
+  if (askBeforeMerging) return !confirmed || !canMergeWithoutDialog(pr, repo, method, confirmed)
+  const assessment = assessMerge(pr, repo)
+  return !pr.sha || !assessment.canMerge || !assessment.methods.includes(method)
+}
 export interface RepositoryFacts {
   defaultBranch: string
   push: boolean

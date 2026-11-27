@@ -24,9 +24,17 @@ export function popover(anchor: HTMLElement, submenu = false) {
   if (!submenu) dismiss = onResize
   document.addEventListener('pointerdown', outside, true)
   node.onkeydown = (e) => {
-    const buttons = [...node.querySelectorAll('button')]
+    const buttons = [...node.querySelectorAll<HTMLElement>('button, [role="menuitemcheckbox"]')].filter(
+      (el) => el.getClientRects().length,
+    )
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
-    if (e.key === 'Escape' || (submenu && e.key === 'ArrowLeft')) close(true)
+    if (e.key === 'Escape') close(true)
+    else if (e.target instanceof HTMLInputElement) {
+      if (e.key !== 'ArrowDown') return
+      const first = node.querySelector<HTMLElement>('[role="menuitemcheckbox"]')
+      if (!first) return
+      first.focus()
+    } else if (submenu && e.key === 'ArrowLeft') close(true)
     else if (e.target instanceof HTMLSelectElement) return
     else if (['ArrowDown', 'ArrowUp'].includes(e.key))
       buttons[(index + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus()

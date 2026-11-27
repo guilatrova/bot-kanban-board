@@ -132,7 +132,7 @@ export function mergeDialog(saved: MergePreferences, update: () => void) {
     const skip = el('label', '', 'skip'),
       checkbox = el('input')
     checkbox.type = 'checkbox'
-    skip.append(checkbox, "Don't ask again for clean pull requests")
+    skip.append(checkbox, "Don't ask again")
     summary.append(skip)
     actions.append(
       button(

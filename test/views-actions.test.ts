@@ -33,6 +33,12 @@ it('filters known repositories and hides unselected unassigned questions', () =>
   expect(fallback.merged).toEqual(merged)
   expect(stale.bots).toEqual(['removed'])
 })
+it('rejects every repository for an empty selection', () => {
+  const board = buildBoard([], [pr], { ...allView, repos: [] }, [])
+  expect(board.acceptsRepo(pr.repo)).toBe(false)
+  expect(board.acceptsRepo('No repo')).toBe(false)
+  expect(board.ready).toEqual([])
+})
 it('orders chains within repositories and terminates cycles', () => {
   const b = { ...pr, number: 2, head: 'second', base: pr.head }
   const c = { ...b, number: 3, head: 'third', base: b.head }

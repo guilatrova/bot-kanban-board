@@ -171,6 +171,7 @@ export default async function activate(host: OrcaWorkerApi) {
     if (shown) {
       const first = !visible.size
       visible.add(id)
+      if (!demo && first && (!data.itemsAt || data.sources.orca.status === 'stale')) void refreshItems()
       if (!demo && first && limitedUntil <= Date.now()) await refreshPrs()
       else if (!inFlight('refresh-prs')) await planPoll()
     } else {

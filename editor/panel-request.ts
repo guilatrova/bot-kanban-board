@@ -60,7 +60,10 @@ export async function panelRequest<K extends keyof PluginRequests>(method: K, ..
       return await orca.plugin.request(method, ...args)
     } catch (err) {
       const raw = (err ?? {}) as Partial<Error> & { code?: string; retryable?: boolean }
-      if (raw.code === 'rate_limited' || /too many requests/i.test(raw.message ?? String(err))) {
+      if (
+        raw.code === 'rate_limited' ||
+        (!workerRejectionCodes.has(raw.code ?? '') && /too many requests/i.test(raw.message ?? String(err)))
+      ) {
         const delay = backoffDelay(attempt, 1000, 30000)
         await new Promise((resolve) => setTimeout(resolve, delay * (0.75 + Math.random() * 0.25)))
         continue

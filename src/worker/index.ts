@@ -177,12 +177,12 @@ export default async function activate(host: OrcaWorkerApi) {
       })
       .catch(reportRefreshFailure))
   }
-  orca.panels.handle('board.visibility', async ({ shown, initial }, context) => {
+  orca.panels.handle('board.visibility', async ({ visible: shown }, context) => {
     const id = context.panel.id
     if (shown) {
       const first = !visible.size
       visible.add(id)
-      if (!demo && first && !initial && limitedUntil <= Date.now()) await refreshPrs()
+      if (!demo && first && limitedUntil <= Date.now()) await refreshPrs()
       else if (!prJob) await planPoll()
     } else {
       visible.delete(id)

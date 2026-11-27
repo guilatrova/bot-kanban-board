@@ -1,3 +1,4 @@
+import { trafficReport } from './storage'
 import { cached, persist } from './frame-cache'
 import { botKey, type Computer } from '../src/core/model'
 import { panelRequest } from './panel-request'
@@ -96,7 +97,7 @@ export function loadPictures(computers: Computer[], epoch: string, fetchMissing 
   async function load() {
     let remaining = keys
     while (remaining.length && epoch === pictureEpoch) {
-      const result = await panelRequest('avatars.get', { keys: remaining }, { timeoutMs: 120000 })
+      const result = await panelRequest('avatars.get', { keys: remaining, ...trafficReport() }, { timeoutMs: 120000 })
       if (epoch !== pictureEpoch) return
       for (const [key, data] of Object.entries(result.avatars)) pictures[key] = 'data:image/png;base64,' + data
       remaining = result.remaining

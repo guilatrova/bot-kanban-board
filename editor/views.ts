@@ -1,3 +1,4 @@
+import { getStorage } from './storage'
 import { allView, type View } from '../src/core/board'
 import { button } from './dom'
 import { panel, ask } from './controls'
@@ -61,5 +62,5 @@ export function readViews(
   roster: () => Promise<{ name: string; computer: string }[]>,
   initial?: import('../src/protocol').Preferences,
 ) {
-  return storedViews(initial ? { get: async (key) => initial[key] } : orca.storage, demo, roster)
+  return storedViews(initial ? { get: async (key) => initial[key] } : { get: getStorage }, demo, roster)
 }

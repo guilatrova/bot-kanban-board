@@ -1,4 +1,4 @@
-import { onStorageWrite } from './storage'
+import { onStorageWrite, trafficReport } from './storage'
 import { panelRequest } from './panel-request'
 import { backoffDelay, retryLabel } from '../src/core/backoff'
 import { skeleton } from './loading'
@@ -27,8 +27,8 @@ async function start() {
   const again = button('Try again', () => run(true))
   state.append(reason, again)
   if (!stored) document.body.append(loading)
-  const visibility = (shown: boolean, initial = false) =>
-    panelRequest('board.visibility', { shown, initial }, { timeoutMs: 120000 })
+  const visibility = (visible: boolean) =>
+    panelRequest('board.visibility', { visible, ...trafficReport() }, { timeoutMs: 120000 })
   let visibilityTimer: ReturnType<typeof setTimeout>
   document.addEventListener('visibilitychange', () => {
     clearTimeout(visibilityTimer)
@@ -52,6 +52,7 @@ async function start() {
       const part = await panelRequest(
         'board.get',
         {
+          ...trafficReport(),
           index,
           fresh,
           visible: !document.hidden,

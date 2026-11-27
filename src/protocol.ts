@@ -61,15 +61,17 @@ export type BoardReply = Version & { preferences?: Preferences } & (
 export type BoardPush = Version & { baseRevision: number } & ({ changes: Changes } | { resync: true })
 export const responseBudget = 900 * 1024
 export const pushBudget = 200 * 1024
+export type FrameTraffic = { storageReads: number; storageWrites: number; bytes: number }
+type TrafficReport = { frameTraffic?: FrameTraffic }
 export type Chunk = { index: number; count: number; data: string }
 declare module 'orca' {
   interface PluginRequests {
     'panel.failure': { input: PanelRejection; output: null }
     'storage.failure': { input: { key: string; valueBytes: number; error: string }; output: null }
     'bot.tell': { input: BotMessage; output: boolean }
-    'board.visibility': { input: { shown: boolean; initial?: boolean }; output: null }
+    'board.visibility': { input: TrafficReport & { visible: boolean }; output: null }
     'board.get': {
-      input: Partial<Version> & { index?: number; fresh?: boolean; visible?: boolean }
+      input: TrafficReport & Partial<Version> & { index?: number; fresh?: boolean; visible?: boolean }
       output: Chunk | BoardReply
     }
     'pr.read': {
@@ -81,7 +83,10 @@ declare module 'orca' {
       >
     }
     'board.refresh': { input: undefined; output: null }
-    'avatars.get': { input: { keys: string[] }; output: { avatars: Record<string, string>; remaining: string[] } }
+    'avatars.get': {
+      input: TrafficReport & { keys: string[] }
+      output: { avatars: Record<string, string>; remaining: string[] }
+    }
     'bell.set': { input: { bell: Bell; on: boolean }; output: null }
     'pr.close': { input: { repo: string; number: number }; output: Source<null> }
     'pr.merge': { input: MergeInput; output: Source<null> }

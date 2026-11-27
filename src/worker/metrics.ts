@@ -2,7 +2,18 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { OrcaWorkerApi, PanelRequestContext } from 'orca/worker'
 import type { JsonValue } from 'orca'
 
-const counters = () => ({ messages: 0, bytes: 0, orca: 0, github: 0, notModified: 0, graphql: 0, hits: 0, misses: 0 })
+const counters = () => ({
+  messages: 0,
+  storageReads: 0,
+  storageWrites: 0,
+  bytes: 0,
+  orca: 0,
+  github: 0,
+  notModified: 0,
+  graphql: 0,
+  hits: 0,
+  misses: 0,
+})
 type Counts = ReturnType<typeof counters>
 type Operation = {
   kind: 'load' | 'refresh'
@@ -54,6 +65,18 @@ export function measure(orca: OrcaWorkerApi, write: (kind: string, fields: strin
       orca.panels.handle(name, async (input, ctx) => {
         const id = ctx.panel.id
         const reply = async () => {
+          if (input && typeof input === 'object' && !Array.isArray(input) && 'frameTraffic' in input) {
+            const stats = input.frameTraffic
+            if (stats && typeof stats === 'object' && !Array.isArray(stats)) {
+              for (const k of ['storageReads', 'storageWrites', 'bytes'] as const) {
+                const n = stats[k]
+                if (typeof n === 'number' && Number.isSafeInteger(n) && n >= 0) {
+                  count(k, n)
+                  if (k !== 'bytes') count('messages', n)
+                }
+              }
+            }
+          }
           const result = await handler(input, ctx)
           message(result)
           return result

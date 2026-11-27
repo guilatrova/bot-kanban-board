@@ -38,7 +38,7 @@ export function bots(data: unknown, computer: string): RosterBot[] {
   return rows(obj(data).bots)
     .map(obj)
     .map((b) => {
-      const bot = { computer, id: str(b, 'id'), name: str(b, 'name'), home: opt(b.botHome) }
+      const bot = { computer, id: str(b, 'id'), name: str(b, 'name'), paused: b.paused === true, home: opt(b.botHome) }
       if (!b.server) return bot
       const server = obj(b.server)
       const name = str(server, 'name'),

@@ -21,6 +21,7 @@ export const itemLanes = ['waiting', 'needs_you', 'in_progress', 'closed'] as co
 export const isClosed = (status: string) => status === 'done' || status === 'canceled'
 export const itemLane = (status: Status) => (isClosed(status) ? 'closed' : status === 'planned' ? 'waiting' : status)
 export interface Bot {
+  paused?: boolean
   computer: string
   id: string
   name: string

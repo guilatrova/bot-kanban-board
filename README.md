@@ -19,6 +19,8 @@ Choose **Open Bot Kanban Board** from the command palette or click **Needs you**
 
 ## Work on the board
 
+Use **All repos** beside the bot chips to toggle repositories or choose **Only**. **No repo** collects items without a linked PR or issue. The board remembers your selection.
+
 Click a bot chip to hide or show its cards. Right-click, Option-click or Command-click to show that bot alone, including its mapped merges and Closed Items. Repeat the gesture to show everyone. A bot with only history today can have a chip with a count of zero. Use **Filters** for repository filters, **Needs me only**, saved views, snoozed Items and computer status.
 
 Open a PR and choose **Merge**, or drag it onto the merge zone. To close it without merging, drag it onto **Close PR** and confirm. For a batch, use a PR’s checkbox or drag a rectangle from empty board space. Shift or Command adds to your selection. Escape clears it. Choose **Merge all** or drag the selected PRs together to start the queue.

@@ -3,7 +3,7 @@ import { applyIncremental, syncMode, FULL_SYNC_MS, type SyncRow } from '../src/c
 import sample from './fixtures/board.json'
 import { botOwners, bots, unpairedComputers, items, pullRequest } from '../src/core/normalize'
 import { githubRepo, mapPrs, owners } from '../src/core/map-prs'
-import { allView, buildBoard, toggleBot } from '../src/core/board'
+import { allView, buildBoard, toggleSelection as toggleBot } from '../src/core/board'
 import { botKey, type Bot, type Computer, type Workspace } from '../src/core/model'
 const bot: Bot = { ...sample.bot, computer: 'local', home: null }
 const item = items({ items: [sample.item] }, bot, [])[0]!

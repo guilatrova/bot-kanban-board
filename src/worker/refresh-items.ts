@@ -42,16 +42,6 @@ export async function refreshItemData(
       await evaluateBells({ items })
       await avatar.prune(rows)
     }
-    const needsYou = items.filter((i) => i.status === 'needs_you').length
-    const unreachable = rows.filter((c) => !c.source.ok).length
-    const text = hasCount
-      ? 'Needs you ' + needsYou + (unreachable ? ' · ' + unreachable + ' unreachable' : '')
-      : 'Needs you ?'
-    await orca.host.call('statusBar.update', {
-      id: 'needs-you',
-      text,
-      tone: hasCount ? (unreachable ? 'warning' : 'neutral') : 'danger',
-    })
   } catch (error) {
     report(error)
   }

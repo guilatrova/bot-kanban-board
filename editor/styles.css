@@ -2425,3 +2425,22 @@ article .check:focus-visible {
     animation: none;
   }
 }
+
+.chip.repo-filtered {
+  color: var(--pr);
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.repo-row {
+  display: flex;
+}
+.repo-row small {
+  margin-left: auto;
+}
+.repo-row .repo-only {
+  width: auto;
+  opacity: 0;
+}
+.repo-row:hover .repo-only,
+.repo-row:focus-within .repo-only {
+  opacity: 1;
+}

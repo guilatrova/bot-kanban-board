@@ -8,7 +8,7 @@ import { parseActions, moveState, moveTimeout, snoozed, snoozeUntil } from '../s
 const bot = { ...fixture.bot, computer: 'local', home: null }
 const item = items({ items: [fixture.item] }, bot, [])[0]!
 const pr = pullRequest(fixture.pr)
-it('filters known repositories and preserves unassigned questions', () => {
+it('filters known repositories and hides unselected unassigned questions', () => {
   const unknown = { ...item, number: 8, text: '' }
   const data = [
     {
@@ -20,8 +20,10 @@ it('filters known repositories and preserves unassigned questions', () => {
       },
     },
   ]
-  const result = buildBoard(data, [pr], { ...allView, repos: ['other/repo'], needsMeOnly: true })
-  expect(result.columns.flatMap((c) => c.items)).toEqual([unknown])
+  const result = buildBoard(data, [pr], { ...allView, repos: ['other/repo'], needsMeOnly: true }, [
+    { ...pr, repo: 'other/repo', mergedAt: pr.updated },
+  ])
+  expect(result.columns.flatMap((c) => c.items)).toEqual([])
   expect(result.ready).toEqual([])
   const stale = { ...allView, bots: ['removed'], repos: ['sample'] }
   const merged = [{ ...pr, mergedAt: pr.updated }]

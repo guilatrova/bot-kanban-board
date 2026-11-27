@@ -1,3 +1,4 @@
+import { boardStatus } from './status'
 import { failureLog } from './failure-log'
 import { readBoardPr, readFailureToLog, refreshFailure } from './read-board-pr'
 import { mergePreflight } from './merge-preflight'
@@ -42,6 +43,7 @@ export default async function activate(orca: OrcaWorkerApi) {
   const storage = loggedStorage(orca)
   const saved = savedBoard(storage, data, report)
   if (!demo) await Promise.all([saved.load('orca'), saved.load('github')])
+  const status = await boardStatus(orca, data, demo, report)
   const landed = new Map<string, MergedPr>()
   function removeOpen(key: string) {
     const before = data.prs.length
@@ -68,6 +70,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     if (postTimer) return
     postTimer = setTimeout(() => {
       postTimer = undefined
+      status()
       orca.panels.post('board.changed', null)
     }, 250)
   }

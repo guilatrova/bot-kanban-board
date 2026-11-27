@@ -1,3 +1,4 @@
+import { dedupe } from './dedupe'
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { StorageApi } from 'orca'
 import { storageGroup } from './chunked-storage'
@@ -7,7 +8,7 @@ import { inspect } from 'node:util'
 import { localDate } from '../core/merge'
 import { pluginDataFolder } from './board-file'
 
-type Entry = { step: string; repo?: string; number?: number; error: unknown }
+type Entry = { step: string; repo?: string; number?: number; error: unknown; fields?: string[] }
 
 function errorText(error: unknown) {
   if (error instanceof Error) return error.stack || error.message
@@ -49,9 +50,7 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
           now.toISOString(),
           now.toTimeString(),
           step,
-          repo ?? '',
-          number === undefined ? '' : '#' + number,
-          errorText(error),
+          ...(entry.fields ?? [repo ?? '', number === undefined ? '' : '#' + number, errorText(error)]),
         ]
           .map((field) => field.replace(/\r\n|[\r\n]/g, '\\n').replace(/\t/g, '\\t'))
           .join('\t')
@@ -114,8 +113,8 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
       return null
     })
     return {
-      get: (key) => orca.storage.get(key),
-      keys: () => orca.storage.keys(),
+      get: (key) => dedupe('storage:' + key, () => orca.storage.get(key)),
+      keys: () => dedupe('storage-keys', () => orca.storage.keys()),
       delete: (key) => orca.storage.delete(key),
       onDidChange: (listener) => orca.storage.onDidChange(listener),
       async set(key, value) {

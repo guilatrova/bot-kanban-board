@@ -1,5 +1,4 @@
 import { bodyIssueRefs } from '../core/normalize'
-import { maxOpenPrs } from '../core/pr-sync'
 import type { IssueRef } from '../core/model'
 import { isChunkRecord, readChunks, writeChunks, type ChunkRecord } from './chunked-storage'
 import type { StorageApi } from 'orca'
@@ -49,23 +48,18 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
           typeof saved.total !== 'number'
         )
           return
-        data.prs = saved.prs
-          .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))
-          .slice(0, maxOpenPrs)
-          .map(migratePr)
+        data.prs = saved.prs.sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).map(migratePr)
         data.merged = saved.merged.map(migratePr)
         data.repos = saved.repos
         data.total = saved.total
         if (
           typeof saved.login === 'string' &&
           typeof saved.allOpenLoaded === 'boolean' &&
-          Number.isFinite(Date.parse(saved.syncedAt ?? '')) &&
-          Number.isFinite(Date.parse(saved.fullSyncedAt ?? ''))
+          Number.isFinite(Date.parse(saved.syncedAt ?? ''))
         ) {
           data.login = saved.login
-          data.allOpenLoaded = saved.allOpenLoaded && saved.total <= maxOpenPrs
+          data.allOpenLoaded = saved.allOpenLoaded
           data.syncedAt = saved.syncedAt
-          data.fullSyncedAt = saved.fullSyncedAt
         }
         data.prsAt = record.at
       }
@@ -77,11 +71,9 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
   }
   async function save(source: SourceName) {
     const key = 'snapshot-' + source
-    const { computers, prs, merged, repos, total, login, syncedAt, fullSyncedAt, allOpenLoaded } = data
+    const { computers, prs, merged, repos, total, login, syncedAt, allOpenLoaded } = data
     const bytes = Buffer.from(
-      JSON.stringify(
-        source === 'orca' ? { computers } : { prs, merged, repos, total, login, syncedAt, fullSyncedAt, allOpenLoaded },
-      ),
+      JSON.stringify(source === 'orca' ? { computers } : { prs, merged, repos, total, login, syncedAt, allOpenLoaded }),
     )
     try {
       const metadata = { version: 1, at: data.sources[source].at }

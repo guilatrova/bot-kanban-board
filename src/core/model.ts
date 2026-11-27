@@ -83,6 +83,7 @@ export interface PullRequest {
   url: string
   crossRepository: boolean
   draft: boolean
+  baseSha?: string
   sha?: string
   head: string
   base: string

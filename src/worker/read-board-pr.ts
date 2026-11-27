@@ -11,14 +11,19 @@ export async function readBoardPr(
   input: PluginRequests['pr.read']['input'],
   data: Snapshot,
   demo: boolean,
-  refreshPrs: () => Promise<void | Failure>,
+  changed: () => Promise<void>,
   recordMerged: (row: MergedPr) => void,
+  removeOpen: (key: string) => void,
 ): Promise<PluginRequests['pr.read']['output']> {
   const { repo, number } = input
   const read = demo ? undefined : await source('gh api graphql', () => readPull(ghPath, { repo, number }))
   if (read && !read.ok) return read
   const live = read?.value
-  if (live?.closed) return { ok: true, value: { closed: true, merged: false } }
+  if (live?.closed) {
+    removeOpen(prKey(input))
+    await changed()
+    return { ok: true, value: { closed: true, merged: false } }
+  }
   if (live?.merged || (demo && data.merged.some((p) => prKey(p) === prKey(input)))) {
     if (live?.merged) recordMerged(live.row)
     return { ok: true, value: { merged: true } }
@@ -28,11 +33,11 @@ export async function readBoardPr(
     if (!repository.ok) return repository
     data.repos[repo] = repository.value
     if (!repository.value.ok) return repository.value
+  }
+  if (live?.pr) {
     const index = data.prs.findIndex((p) => prKey(p) === prKey(input))
     if (index >= 0) data.prs[index] = live.pr
-  } else if (!demo) {
-    const failure = await refreshPrs()
-    if (failure) return failure
+    await changed()
   }
   const pr = live?.pr ?? data.prs.find((p) => prKey(p) === prKey(input))
   const facts = data.error || data.repos[input.repo]

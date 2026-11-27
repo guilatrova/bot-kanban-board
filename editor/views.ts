@@ -1,3 +1,4 @@
+import { getStorage } from './storage'
 import { allView, type View } from '../src/core/board'
 import { button } from './dom'
 import { panel, ask } from './controls'
@@ -56,6 +57,10 @@ export function views(saved: Saved, update: () => void) {
   }
 }
 
-export function readViews(demo: boolean, roster: () => Promise<{ name: string; computer: string }[]>) {
-  return storedViews(orca.storage, demo, roster)
+export function readViews(
+  demo: boolean,
+  roster: () => Promise<{ name: string; computer: string }[]>,
+  initial?: import('../src/protocol').Preferences,
+) {
+  return storedViews(initial ? { get: async (key) => initial[key] } : { get: getStorage }, demo, roster)
 }

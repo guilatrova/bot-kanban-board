@@ -350,5 +350,10 @@ export function view(
       data.focus = false
     }
   }
-  return { draw, focus }
+  function fold(folded: Set<string>) {
+    collapsed.clear()
+    for (const lane of folded) collapsed.add(lane)
+    for (const column of columns.values()) column.expandForDrag(false)
+  }
+  return { draw, focus, fold, saved, prefs, actions: store.state }
 }

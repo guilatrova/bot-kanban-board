@@ -1,3 +1,4 @@
+import { backoffDelay } from '../src/core/backoff'
 import type { PluginRequestArgs, PluginRequests } from 'orca'
 import { workerRejectionCodes, type PanelRejection } from '../src/protocol'
 import { notice } from './dom'
@@ -53,27 +54,37 @@ export class PanelError extends Error {
 }
 
 export async function panelRequest<K extends keyof PluginRequests>(method: K, ...args: PluginRequestArgs<K>) {
-  record(method)
-  try {
-    return await orca.plugin.request(method, ...args)
-  } catch (err) {
-    const raw = (err ?? {}) as Partial<Error> & { code?: string; retryable?: boolean }
-    const rejection: PanelRejection = {
-      method,
-      name: raw.name ?? null,
-      code: raw.code ?? (err === 'timeout' ? 'timeout' : null),
-      message: raw.message ?? String(err),
-      retryable: raw.retryable ?? null,
-      stack: raw.stack ?? null,
-      calls: recentCalls(),
-    }
+  for (let attempt = 1; ; attempt++) {
+    record(method)
     try {
-      record('panel.failure')
-      void orca.plugin.request('panel.failure', rejection).catch(() => {})
-    } catch {
-      // The host bridge may already be gone.
+      return await orca.plugin.request(method, ...args)
+    } catch (err) {
+      const raw = (err ?? {}) as Partial<Error> & { code?: string; retryable?: boolean }
+      if (
+        raw.code === 'rate_limited' ||
+        (!workerRejectionCodes.has(raw.code ?? '') && /too many requests/i.test(raw.message ?? String(err)))
+      ) {
+        const delay = backoffDelay(attempt, 1000, 30000)
+        await new Promise((resolve) => setTimeout(resolve, delay * (0.75 + Math.random() * 0.25)))
+        continue
+      }
+      const rejection: PanelRejection = {
+        method,
+        name: raw.name ?? null,
+        code: raw.code ?? (err === 'timeout' ? 'timeout' : null),
+        message: raw.message ?? String(err),
+        retryable: raw.retryable ?? null,
+        stack: raw.stack ?? null,
+        calls: recentCalls(),
+      }
+      try {
+        record('panel.failure')
+        void orca.plugin.request('panel.failure', rejection).catch(() => {})
+      } catch {
+        // The host bridge may already be gone.
+      }
+      const refused = rejection.code !== 'timeout' && !workerRejectionCodes.has(rejection.code ?? '')
+      throw new PanelError(rejection, refused && reloadAfterRefusal())
     }
-    const refused = rejection.code !== 'timeout' && !workerRejectionCodes.has(rejection.code ?? '')
-    throw new PanelError(rejection, refused && reloadAfterRefusal())
   }
 }

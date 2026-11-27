@@ -1,13 +1,39 @@
+import { count } from '../metrics'
 import { itemKey, type Computer, type Item } from '../../core/model'
 import { botOwners, bots, items, obj, rows, str, unpairedComputers, workers, workspaces } from '../../core/normalize'
 import { workspaceRemote } from './git'
 import { reader, source } from './read'
+type Entry = { command: string; environment?: string; bot?: string; payload: unknown }
+const cached = new Map<string, Entry>()
+export function invalidateOrca(kind: 'all' | 'trees' | 'items', environment?: string, bot?: string) {
+  for (const [key, entry] of cached) {
+    if (environment && entry.environment !== environment) continue
+    if (bot && entry.bot !== bot) continue
+    if (kind === 'all' || (kind === 'trees' ? entry.command === 'worktree' : entry.bot)) cached.delete(key)
+  }
+}
 export async function computers(
   path: string,
   closing: Set<string>,
   warn: (message: string) => void,
 ): Promise<Computer[]> {
-  const read = reader('orca', path)
+  const cli = reader('orca', path)
+  async function read<T>(args: string[], normalize: (v: unknown) => T) {
+    const key = JSON.stringify([path, args])
+    let entry = cached.get(key)
+    count(entry ? 'hits' : 'misses')
+    if (!entry) {
+      const payload = await cli(args, (v) => v)
+      entry = {
+        command: args[0]!,
+        environment: args.includes('--environment') ? args[args.indexOf('--environment') + 1] : undefined,
+        bot: args.includes('--bot') ? args[args.indexOf('--bot') + 1] : undefined,
+        payload,
+      }
+      cached.set(key, entry)
+    }
+    return normalize(entry.payload)
+  }
   const environments = await source('orca environment list', () =>
     read(['environment', 'list', '--json'], (v) =>
       rows(obj(v).environments)

@@ -1,52 +1,42 @@
-import { chunkSize, deleteChunks, digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
-import { open } from 'node:fs/promises'
+import { count } from './metrics'
+import { deleteChunks, digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
+import { stat } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { dedupe } from './dedupe'
+import { responseBudget } from '../protocol'
+import { botKey } from '../core/model'
+import type { OrcaWorkerApi } from 'orca/worker'
 import { join } from 'node:path'
 import type { StorageApi } from 'orca'
 import type { Computer } from '../core/model'
 import { withTerminal } from './terminal'
 
-const maxStoredBytes = 64 * 1024
-const freshness = 6 * 60 * 60_000
+const maxStoredBytes = 20 * 1024
+const execute = promisify(execFile)
 const cacheKey = (computer: string, bot: string) => 'avatar-' + digest(JSON.stringify([computer, bot])).slice(0, 24)
 const validPng = (bytes: Buffer) => bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
 
-async function localAvatar(home: string, offset: number) {
-  try {
-    const file = await open(join(home, 'avatar.png'), 'r')
-    try {
-      const size = (await file.stat()).size
-      const length = Math.min(chunkSize, size - offset)
-      if (length <= 0) return null
-      const buffer = Buffer.alloc(length)
-      let read = 0
-      while (read < length) {
-        const { bytesRead } = await file.read(buffer, read, length - read, offset + read)
-        if (!bytesRead) return null
-        read += bytesRead
-      }
-      if (!offset && !validPng(buffer)) return null
-      return { data: buffer.toString('base64'), next: offset + length < size ? offset + length : null }
-    } finally {
-      await file.close()
-    }
-  } catch {
-    return null
-  }
-}
-
+const resize = [
+  'set -e',
+  'tmp=$(mktemp -d)',
+  'trap "rm -rf \\"$tmp\\"" EXIT',
+  'file="$tmp/avatar.png"',
+  'cp avatar.png "$file"',
+  'if command -v sips >/dev/null; then sips -Z 128 "$file" >/dev/null; elif command -v magick >/dev/null; then magick "$file" -resize "128x128>" "$file"; else convert "$file" -resize "128x128>" "$file"; fi',
+  'test "$(wc -c < "$file")" -le ' + maxStoredBytes,
+]
 // Orca terminal previews retain about 32 KiB. Request one 18 KiB block at a time.
 const transferSize = 18 * 1024
 const transfer =
   " exec bash -c '" +
   [
-    'set -e',
-    'tmp=$(mktemp -d)',
-    'trap "rm -rf \\"$tmp\\"" EXIT',
-    'file="$tmp/avatar.png"',
-    'cp avatar.png "$file"',
-    'if command -v sips >/dev/null; then sips -Z 128 "$file" >/dev/null || file=avatar.png; elif command -v magick >/dev/null; then magick "$file" -resize "128x128>" "$file" || file=avatar.png; elif command -v convert >/dev/null; then convert "$file" -resize "128x128>" "$file" || file=avatar.png; fi',
-    'hash=$(shasum -a 256 < "$file")',
+    'hash=$(shasum -a 256 < avatar.png)',
     'echo BOARDHASH=${hash%% *}',
+    'read -r -t 60 start',
+    ...resize,
+    'resized=$(shasum -a 256 < "$file")',
+    'echo BOARDSIZED=${resized%% *}',
     'while read -r -t 60 n; do echo BOARDSTART=$n',
     `dd if="$file" bs=${transferSize} skip="$n" count=1 2>/dev/null | base64 | tr -d "\\n" | fold -w 1024`,
     'printf "\\nBOARDDONE=%s\\n" "$n"',
@@ -58,6 +48,8 @@ async function remoteImage(path: string, computer: string, home: string, previou
   return withTerminal(path, computer, home, 'Board avatar', transfer, async ({ send, until }) => {
     const hash = (await until(/^BOARDHASH=[a-f0-9]{64}$/)).at(-1)!.slice(10)
     if (hash === previous) return { hash, bytes: null }
+    await send('resize')
+    const checksum = (await until(/^BOARDSIZED=[a-f0-9]{64}$/)).at(-1)!.slice(11)
     const blocks: Buffer[] = []
     for (let i = 0; ; i++) {
       await send(String(i))
@@ -69,58 +61,55 @@ async function remoteImage(path: string, computer: string, home: string, previou
       if (bytes.length < transferSize) break
     }
     const bytes = Buffer.concat(blocks)
-    if (digest(bytes) !== hash) throw Error('Avatar changed during transfer')
+    if (digest(bytes) !== checksum) throw Error('Incomplete resized avatar')
     return { hash, bytes }
   })
 }
 
 export function avatars(storage: StorageApi, log: (error: unknown) => Promise<void>) {
-  const jobs = new Map<string, { time: number; picture: Promise<Buffer | null> }>()
-  async function load(key: string, computer: string, home: string | null, path: string, memory: Buffer | null) {
-    const meta = await storage.get(key)
-    const previous = isChunkRecord(meta) ? meta : undefined
-    const existing = memory ?? (previous ? await readChunks(storage, key, previous) : null)
-    if (!home) return existing
-    const verified = existing ? digest(existing) : null
-    const result = await remoteImage(path, computer, home, verified).catch(() => null)
-    if (!result) return existing
-    const image = result.bytes ?? existing
-    if (!image || !validPng(image)) return existing
-    if (image.length > maxStoredBytes) {
-      await log({ key, bytes: image.length, message: 'Avatar exceeds 64 KiB and is cached in memory only.' })
-      if (previous) await deleteChunks(storage, key, previous).catch(log)
-      return image
-    }
-    try {
-      await writeChunks(
-        storage,
-        key,
-        image,
-        { computer },
-        !existing && previous?.hash === result.hash ? undefined : previous,
-      )
-    } catch (error) {
-      await log({ key, bytes: image.length, error })
-    }
-    return image
-  }
-  async function get(computer: string, bot: string, home: string | null, offset: number, path: string) {
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset % chunkSize) return null
-    if (computer === 'local') return home ? localAvatar(home, offset) : null
+  const warned = new Set<string>()
+  async function get(computer: string, bot: string, home: string | null, path: string) {
+    if (!home) return null
     const key = cacheKey(computer, bot)
-    let job = jobs.get(key)
-    if (!job || (!offset && Date.now() - job.time >= freshness)) {
-      const last = job?.picture ?? Promise.resolve(null)
-      job = {
-        time: Date.now(),
-        picture: last.then((image) => load(key, computer, home, path, image).catch(() => image)),
+    return dedupe(key, async () => {
+      try {
+        const meta = await storage.get(key)
+        const record = isChunkRecord(meta) ? meta : undefined
+        const existing = record ? await readChunks(storage, key, record) : null
+        const previous =
+          existing && record && 'source' in record && typeof record.source === 'string' ? record.source : null
+        let source: string, bytes: Buffer | null
+        if (computer === 'local') {
+          const info = await stat(join(home, 'avatar.png'))
+          source = info.mtimeMs + ':' + info.size
+          bytes =
+            source === previous
+              ? null
+              : (
+                  await execute('bash', ['-c', [...resize, 'cat "$file"'].join('; ')], {
+                    cwd: home,
+                    encoding: 'buffer',
+                    maxBuffer: 256 * 1024,
+                  })
+                ).stdout
+        } else {
+          const image = await remoteImage(path, computer, home, previous)
+          source = image.hash
+          bytes = image.bytes
+        }
+        count(bytes ? 'misses' : 'hits')
+        const image = bytes ?? existing
+        if (!image || !validPng(image) || image.length > maxStoredBytes) throw Error('Invalid or oversized avatar')
+        if (bytes) await writeChunks(storage, key, bytes, { source, computer }, existing ? record : undefined)
+        return image.toString('base64')
+      } catch (error) {
+        if (!warned.has(key)) {
+          warned.add(key)
+          await log({ key, error })
+        }
+        return null
       }
-      jobs.set(key, job)
-    }
-    const bytes = await job.picture
-    if (!bytes || offset >= bytes.length) return null
-    const end = Math.min(bytes.length, offset + chunkSize)
-    return { data: bytes.subarray(offset, end).toString('base64'), next: end < bytes.length ? end : null }
+    })
   }
   let lastRoster = ''
   async function prune(computers: Computer[]) {
@@ -133,13 +122,13 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
         continue
       }
       known.add(c.key)
-      if (c.key !== 'local') for (const b of c.source.value.bots) live.add(cacheKey(c.key, b.name))
+      for (const b of c.source.value.bots) live.add(cacheKey(c.key, b.name))
     }
     const roster = JSON.stringify([complete, [...known].sort(), [...live].sort()])
     if (roster === lastRoster) return
     const keys = await storage.keys()
     const groups = new Map<string, string[]>()
-    for (const key of [...keys, ...jobs.keys()]) {
+    for (const key of keys) {
       const base = key.match(/^avatar-[a-f0-9]{24}/)?.[0]
       if (!base || live.has(base)) continue
       const group = groups.get(base) ?? []
@@ -152,13 +141,7 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
         if (!m || typeof m !== 'object' || Array.isArray(m) || typeof m.computer !== 'string' || !known.has(m.computer))
           continue
       }
-      const job = jobs.get(base)
-      if (job) {
-        await job.picture
-        jobs.delete(base)
-      }
-      const stale = job ? (await storage.keys()).filter((k) => k.startsWith(base)) : group
-      for (const key of stale) await storage.delete(key)
+      for (const key of group) await storage.delete(key)
     }
     lastRoster = roster
   }
@@ -172,4 +155,51 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
     }
   }
   return { get, prune, clearOversized }
+}
+
+export function serveAvatars(
+  orca: OrcaWorkerApi,
+  avatar: ReturnType<typeof avatars>,
+  computers: () => Computer[],
+  path: () => Promise<string>,
+) {
+  orca.panels.handle('avatars.get', async ({ keys }) => {
+    const wanted = new Set(keys)
+    const avatars: Record<string, string> = {}
+    const remaining: string[] = []
+    let size = Buffer.byteLength(JSON.stringify({ avatars, remaining: keys })) + 128
+    const executable = await path()
+    const requests = computers()
+      .flatMap((c) => {
+        if (!c.source.ok) return []
+        const { bots, workspaces } = c.source.value
+        return bots.map((b) => ({
+          key: botKey(c.key, b.name),
+          computer: c.key,
+          bot: b.name,
+          home: b.home ?? workspaces.find((w) => w.bot === b.name && w.home)?.home ?? null,
+        }))
+      })
+      .filter((b) => wanted.has(b.key))
+    for (let start = 0; start < requests.length; start += 6) {
+      const batch = requests.slice(start, start + 6)
+      if (size + Math.ceil(maxStoredBytes / 3) * 4 > responseBudget) {
+        remaining.push(...requests.slice(start).map((b) => b.key))
+        break
+      }
+      const results = await Promise.all(
+        batch.map(async (b) => ({ key: b.key, data: await avatar.get(b.computer, b.bot, b.home, executable) })),
+      )
+      for (const { key, data } of results) {
+        if (!data) continue
+        if (size + data.length + 4 > responseBudget) {
+          remaining.push(key)
+          continue
+        }
+        avatars[key] = data
+        size += data.length + 4
+      }
+    }
+    return { avatars, remaining }
+  })
 }

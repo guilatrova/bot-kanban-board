@@ -1,3 +1,13 @@
+import { count } from './metrics'
+import type { StorageApi } from 'orca'
+import { digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
+
+let cache: StorageApi | undefined
+let cacheFailure: (e: unknown) => void = console.warn
+export function configureCliCache(storage: StorageApi, report: (e: unknown) => void) {
+  cache = storage
+  cacheFailure = report
+}
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
 import { access } from 'node:fs/promises'
@@ -58,15 +68,37 @@ export async function runCli(
       next: 'Open it from the Orca desktop app as yourself.',
     }
   }
+  let previous: Buffer | null = null
+  function reused() {
+    count('notModified')
+    count('hits')
+    return { ok: true as const, value: JSON.parse(previous!.toString()) as unknown }
+  }
   try {
     const path = await binaryPath(binary, configured)
-    const { stdout } = await execute(path, headers ? [args[0]!, '-i', ...args.slice(1)] : args, {
+    const cacheKey =
+      headers && !args.includes('--method') && args[1] !== 'graphql'
+        ? 'rest-' + digest(JSON.stringify([path, args]))
+        : null
+    const meta = cacheKey && cache ? await cache.get(cacheKey) : null
+    const record = isChunkRecord(meta) && 'etag' in meta && typeof meta.etag === 'string' ? meta : null
+    previous = record && cache && cacheKey ? await readChunks(cache, cacheKey, record) : null
+    const conditional = previous && record ? ['-H', 'If-None-Match: ' + record.etag] : []
+    count(binary === 'gh' ? 'github' : 'orca')
+    if (binary === 'gh' && args[1] === 'graphql') count('graphql')
+    const { stdout } = await execute(path, headers ? [args[0]!, '-i', ...conditional, ...args.slice(1)] : args, {
       env,
       timeout: timeoutSeconds * 1000,
       maxBuffer: 64 * 1024 * 1024,
     })
     if (format === 'text') return { ok: true, value: stdout }
-    const json: unknown = JSON.parse(headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout)
+    if (previous && /^HTTP\/[^ ]+ 304\b/.test(stdout)) return reused()
+    if (cacheKey) count('misses')
+    const body = headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout
+    const json: unknown = JSON.parse(body)
+    const etag = stdout.split(/\r?\n\r?\n/, 1)[0]?.match(/^etag:[ \t]*([^\r\n]+)/im)?.[1]
+    if (etag && cacheKey && cache)
+      await writeChunks(cache, cacheKey, Buffer.from(body), { etag }, record ?? undefined).catch(cacheFailure)
     if (binary === 'gh') return { ok: true, value: json }
     if (json && typeof json === 'object' && 'ok' in json && json.ok === true && 'result' in json)
       return { ok: true, value: json.result }
@@ -90,6 +122,7 @@ export async function runCli(
       rateLimited = false
     if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {
       const output = error.stdout
+      if (previous && /^HTTP\/[^ ]+ 304\b/.test(output)) return reused()
       const http = output.match(/^HTTP\/[\d.]+ (\d{3})/i) ?? message.match(/HTTP (\d{3})/i)
       status = http ? Number(http[1]) : undefined
       const head = output.split(/\r?\n\r?\n/, 1)[0] ?? ''

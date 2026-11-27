@@ -1,3 +1,6 @@
+import { trafficReport } from './storage'
+import { cached, persist } from './frame-cache'
+import { botKey, type Computer } from '../src/core/model'
 import { panelRequest } from './panel-request'
 import type { Failure } from '../src/core/model'
 function hideIds(text: string) {
@@ -74,16 +77,40 @@ export function externalLink(label: string, url: string) {
 export function external(label: string, url: string) {
   return button(label, () => openExternal(url))
 }
-const pictures = new Map<string, { time: number; value: Promise<string | null> }>()
-async function loadAvatar(computer: string, bot: string) {
-  let offset = 0
-  const parts = ['data:image/png;base64,']
-  for (;;) {
-    const part = await panelRequest('avatar.get', { computer, bot, offset }, { timeoutMs: 120000 })
-    if (!part) return null
-    parts.push(part.data)
-    if (part.next === null) return parts.join('')
-    offset = part.next
+let pictureEpoch = ''
+let pictures: Record<string, string> = {}
+const pendingPictures = new Map<string, Promise<void>>()
+const checked = new Set<string>()
+export function loadPictures(computers: Computer[], epoch: string, fetchMissing = true) {
+  if (epoch !== pictureEpoch) {
+    pictureEpoch = epoch
+    const saved = cached<{ epoch: string; pictures: Record<string, string> }>('board-avatars')
+    pictures = saved?.epoch === epoch ? saved.pictures : {}
+    checked.clear()
+    pendingPictures.clear()
+  }
+  if (!fetchMissing) return
+  const keys = computers
+    .flatMap((c) => (c.source.ok ? c.source.value.bots.map((b) => botKey(c.key, b.name)) : []))
+    .filter((k) => !pictures[k] && !checked.has(k))
+  if (!keys.length) return
+  async function load() {
+    let remaining = keys
+    while (remaining.length && epoch === pictureEpoch) {
+      const result = await panelRequest('avatars.get', { keys: remaining, ...trafficReport() }, { timeoutMs: 120000 })
+      if (epoch !== pictureEpoch) return
+      for (const [key, data] of Object.entries(result.avatars)) pictures[key] = 'data:image/png;base64,' + data
+      remaining = result.remaining
+    }
+    persist('board-avatars', { epoch, pictures })
+  }
+  const job = load().catch((error) => {
+    for (const key of keys) checked.delete(key)
+    notice(error)
+  })
+  for (const key of keys) {
+    pendingPictures.set(key, job)
+    checked.add(key)
   }
 }
 export function badge(computer: string, bot: string) {
@@ -99,12 +126,8 @@ export function badge(computer: string, bot: string) {
   const hash = Array.from(bot).reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 0)
   span.style.setProperty('--tint', 'var(--' + ['needs_you', 'in_progress', 'waiting', 'prs'][hash % 4] + ')')
   const key = JSON.stringify([computer, bot])
-  let picture = pictures.get(key)
-  if (!picture || Date.now() - picture.time >= 600000) {
-    picture = { time: Date.now(), value: loadAvatar(computer, bot).catch(() => null) }
-    pictures.set(key, picture)
-  }
-  void picture.value.then((src) => {
+  void Promise.resolve(pendingPictures.get(key)).then(() => {
+    const src = pictures[key]
     if (!src) return
     const img = new Image()
     img.alt = ''

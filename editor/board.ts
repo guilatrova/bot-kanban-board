@@ -32,6 +32,7 @@ async function start() {
     clearTimeout(visibilityTimer)
     void visibility(false).catch(notice)
   })
+  let confirmed = false
   let board: ReturnType<typeof view> | undefined
   let drawn = false
   let latest: Snapshot
@@ -64,12 +65,14 @@ async function start() {
       snapshot,
       preferences: reply.preferences ?? stored!.preferences,
     }
+    confirmed = true
     persist(cacheKey, stored)
     await draw(snapshot)
+    if (fresh) board?.focus()
   }
   async function draw(data: Snapshot) {
     latest = data
-    if (!data.demo) loadPictures(data.computers, stored!.epoch)
+    if (!data.demo) loadPictures(data.computers, stored!.epoch, confirmed)
     if (!board) {
       const [saved, actions, settings] = await Promise.all([
         readViews(Boolean(data.demo), roster, stored!.preferences),

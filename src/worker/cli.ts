@@ -66,6 +66,12 @@ export async function runCli(
       next: 'Open it from the Orca desktop app as yourself.',
     }
   }
+  let previous: Buffer | null = null
+  function reused() {
+    count('notModified')
+    count('hits')
+    return { ok: true as const, value: JSON.parse(previous!.toString()) as unknown }
+  }
   try {
     const path = await binaryPath(binary, configured)
     const cacheKey =
@@ -74,7 +80,7 @@ export async function runCli(
         : null
     const meta = cacheKey && cache ? await cache.get(cacheKey) : null
     const record = isChunkRecord(meta) && 'etag' in meta && typeof meta.etag === 'string' ? meta : null
-    const previous = record && cache && cacheKey ? await readChunks(cache, cacheKey, record) : null
+    previous = record && cache && cacheKey ? await readChunks(cache, cacheKey, record) : null
     const conditional = previous && record ? ['-H', 'If-None-Match: ' + record.etag] : []
     count(binary === 'gh' ? 'github' : 'orca')
     if (binary === 'gh' && args[1] === 'graphql') count('graphql')
@@ -84,11 +90,8 @@ export async function runCli(
       maxBuffer: 64 * 1024 * 1024,
     })
     if (format === 'text') return { ok: true, value: stdout }
-    if (previous && /^HTTP\/[^ ]+ 304\b/.test(stdout)) {
-      count('notModified')
-      count('hits')
-      return { ok: true, value: JSON.parse(previous.toString()) }
-    }
+    if (previous && /^HTTP\/[^ ]+ 304\b/.test(stdout)) return reused()
+    if (cacheKey) count('misses')
     const body = headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout
     const json: unknown = JSON.parse(body)
     const etag = stdout.split(/\r?\n\r?\n/, 1)[0]?.match(/^etag:[ \t]*([^\r\n]+)/im)?.[1]
@@ -116,6 +119,7 @@ export async function runCli(
       rateLimited = false
     if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {
       const output = error.stdout
+      if (previous && /^HTTP\/[^ ]+ 304\b/.test(output)) return reused()
       const http = output.match(/^HTTP\/[\d.]+ (\d{3})/i) ?? message.match(/HTTP (\d{3})/i)
       status = http ? Number(http[1]) : undefined
       const head = output.split(/\r?\n\r?\n/, 1)[0] ?? ''

@@ -190,9 +190,13 @@ export default async function activate(host: OrcaWorkerApi) {
     }
     return null
   })
-  const publishSnapshot = serveSnapshots(orca, data, (id, shown) => {
+  const publishSnapshot = serveSnapshots(orca, data, async (id, shown) => {
     if (shown && !demo) {
       visible.add(id)
+      if (!data.prsAt && !data.itemsAt) {
+        await Promise.all([refreshPrs(), refreshItems()])
+        return
+      }
       if (visible.size === 1) {
         if (!data.itemsAt || data.sources.orca.status === 'stale') void refreshItems()
         if (

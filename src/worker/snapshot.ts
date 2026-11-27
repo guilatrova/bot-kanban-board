@@ -4,8 +4,13 @@ import type { OrcaWorkerApi } from 'orca/worker'
 import { changes, applyChanges, type Changes } from '../core/snapshot-diff'
 import { responseBudget, pushBudget, type BoardReply, type Snapshot } from '../protocol'
 
-export function serveSnapshots(orca: OrcaWorkerApi, data: Snapshot, opened: (id: string, visible: boolean) => void) {
+export function serveSnapshots(
+  orca: OrcaWorkerApi,
+  data: Snapshot,
+  opened: (id: string, visible: boolean) => Promise<void>,
+) {
   const epoch = randomUUID()
+  let hasReader = false
   let revision = 0
   let current = JSON.parse(JSON.stringify(data)) as Snapshot
   const history = new Map<number, Changes>()
@@ -18,6 +23,7 @@ export function serveSnapshots(orca: OrcaWorkerApi, data: Snapshot, opened: (id:
     history.set(baseRevision, changes(next, current))
     history.delete(baseRevision - 20)
     current = next
+    if (!hasReader) return
     const version = { epoch, revision, baseRevision }
     const push = JSON.parse(JSON.stringify({ ...version, changes: diff }))
     orca.panels.post(
@@ -29,7 +35,9 @@ export function serveSnapshots(orca: OrcaWorkerApi, data: Snapshot, opened: (id:
     const id = ctx.panel.id,
       index = input.index ?? 0
     if (!index) {
-      if (input.fresh) opened(id, input.visible !== false)
+      if (input.fresh) await opened(id, input.visible !== false)
+      publish()
+      hasReader = true
       let base: Snapshot | undefined
       if (
         input.epoch === epoch &&

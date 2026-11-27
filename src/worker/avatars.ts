@@ -1,3 +1,4 @@
+import { count } from './metrics'
 import { deleteChunks, digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
 import { stat } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
@@ -92,6 +93,7 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
           source = image.hash
           bytes = image.bytes
         }
+        count(bytes ? 'misses' : 'hits')
         const image = bytes ?? existing
         if (!image || !validPng(image) || image.length > maxStoredBytes) throw Error('Invalid or oversized avatar')
         if (bytes) await writeChunks(storage, key, bytes, { source, computer }, record)
@@ -175,14 +177,22 @@ export function serveAvatars(
         }))
       })
       .filter((b) => wanted.has(b.key))
-    for (const b of requests) {
+    for (let start = 0; start < requests.length; start += 6) {
+      const batch = requests.slice(start, start + 6)
       if (size + Math.ceil(maxStoredBytes / 3) * 4 > responseBudget) {
-        remaining.push(b.key)
-        continue
+        remaining.push(...requests.slice(start).map((b) => b.key))
+        break
       }
-      const data = await avatar.get(b.computer, b.bot, b.home, executable)
-      if (data) {
-        avatars[b.key] = data
+      const results = await Promise.all(
+        batch.map(async (b) => ({ key: b.key, data: await avatar.get(b.computer, b.bot, b.home, executable) })),
+      )
+      for (const { key, data } of results) {
+        if (!data) continue
+        if (size + data.length + 4 > responseBudget) {
+          remaining.push(key)
+          continue
+        }
+        avatars[key] = data
         size += data.length + 4
       }
     }

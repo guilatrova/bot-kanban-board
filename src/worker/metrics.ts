@@ -45,7 +45,7 @@ export function measure(orca: OrcaWorkerApi, write: (kind: string, fields: strin
   }
   function refresh<T>(job: () => Promise<T>) {
     const current = scope.getStore()
-    return current?.kind === 'refresh' && !current.closed ? job() : run(create('refresh'), job)
+    return current && !current.closed ? run(current, job) : run(create('refresh'), job)
   }
   const panels: OrcaWorkerApi['panels'] = {
     handle: (name: string, handler: (input: JsonValue | undefined, ctx: PanelRequestContext) => unknown) =>
@@ -64,6 +64,7 @@ export function measure(orca: OrcaWorkerApi, write: (kind: string, fields: strin
           }
           return run(op, reply, id)
         }
+        if (name === 'board.visibility' && loads.has(id)) return run(loads.get(id)!, reply, id)
         if (name === 'board.refresh' || name === 'pr.merge' || name === 'pr.close') return refresh(reply)
         return reply()
       }),

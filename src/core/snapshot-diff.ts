@@ -5,7 +5,7 @@ import type { MergedPr } from './merge'
 type Rows<T> = { upsert: T[]; remove: string[]; order?: string[] }
 type Header = Omit<Snapshot, 'computers' | 'prs' | 'merged'>
 export type Changes = {
-  header?: Header
+  header?: Partial<Header>
   computers?: Rows<Computer>
   items?: Rows<Item>
   prs?: Rows<PullRequest>
@@ -36,8 +36,9 @@ function compare<T>(before: T[], after: T[], key: (row: T) => string): Rows<T> |
 export function changes(before: Snapshot, after: Snapshot): Changes {
   const a = split(before),
     b = split(after)
+  const header = Object.fromEntries(Object.entries(b.header).filter(([k, v]) => !same(a.header[k as keyof Header], v)))
   return {
-    header: same(a.header, b.header) ? undefined : b.header,
+    header: Object.keys(header).length ? header : undefined,
     computers: compare(a.computers, b.computers, computerKey),
     items: compare(a.items, b.items, itemKey),
     prs: compare(a.prs, b.prs, prKey),
@@ -63,7 +64,8 @@ export function applyChanges(snapshot: Snapshot, diff: Changes): Snapshot {
       : c,
   )
   return {
-    ...(diff.header ?? base.header),
+    ...base.header,
+    ...diff.header,
     computers,
     prs: apply(base.prs, diff.prs, prKey),
     merged: apply(base.merged, diff.merged, prKey),

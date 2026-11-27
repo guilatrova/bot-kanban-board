@@ -80,7 +80,7 @@ let pictureEpoch = ''
 let pictures: Record<string, string> = {}
 const pendingPictures = new Map<string, Promise<void>>()
 const checked = new Set<string>()
-export function loadPictures(computers: Computer[], epoch: string) {
+export function loadPictures(computers: Computer[], epoch: string, fetchMissing = true) {
   if (epoch !== pictureEpoch) {
     pictureEpoch = epoch
     const saved = cached<{ epoch: string; pictures: Record<string, string> }>('board-avatars')
@@ -88,6 +88,7 @@ export function loadPictures(computers: Computer[], epoch: string) {
     checked.clear()
     pendingPictures.clear()
   }
+  if (!fetchMissing) return
   const keys = computers
     .flatMap((c) => (c.source.ok ? c.source.value.bots.map((b) => botKey(c.key, b.name)) : []))
     .filter((k) => !pictures[k] && !checked.has(k))

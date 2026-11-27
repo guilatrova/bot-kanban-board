@@ -230,7 +230,7 @@ export function mergeQueue(
         ),
         errors.details,
       )
-      return { pr, result: 'failed' }
+      return { pr, result: 'failed', reason: attempts[attempts.length - 1]!.short }
     }
     return { run }
   }

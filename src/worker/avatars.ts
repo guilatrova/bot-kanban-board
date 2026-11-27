@@ -13,6 +13,9 @@ import type { Computer } from '../core/model'
 import { withTerminal } from './terminal'
 
 const maxStoredBytes = 20 * 1024
+const resizeTimeoutMs = 45_000
+const failureRetryMs = 5 * 60_000
+const maxConcurrentReads = 2
 const execute = promisify(execFile)
 const cacheKey = (computer: string, bot: string) => 'avatar-' + digest(JSON.stringify([computer, bot])).slice(0, 24)
 const validPng = (bytes: Buffer) => bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
@@ -31,6 +34,9 @@ const transferSize = 18 * 1024
 const transfer =
   " exec bash -c '" +
   [
+    'set -e',
+    'failed() { echo BOARDFAILED; read -r -t 60 ignored || true; exit 1; }',
+    'trap failed ERR',
     'hash=$(shasum -a 256 < avatar.png)',
     'echo BOARDHASH=${hash%% *}',
     'read -r -t 60 start',
@@ -46,10 +52,15 @@ const transfer =
 
 async function remoteImage(path: string, computer: string, home: string, previous: string | null) {
   return withTerminal(path, computer, home, 'Board avatar', transfer, async ({ send, until }) => {
-    const hash = (await until(/^BOARDHASH=[a-f0-9]{64}$/)).at(-1)!.slice(10)
+    async function readHash(marker: 'BOARDHASH' | 'BOARDSIZED', timeoutMs?: number) {
+      const line = (await until(new RegExp('^(?:' + marker + '=[a-f0-9]{64}|BOARDFAILED)$'), timeoutMs)).at(-1)!
+      if (line === 'BOARDFAILED') throw Error('Avatar command failed before ' + marker)
+      return line.slice(marker.length + 1)
+    }
+    const hash = await readHash('BOARDHASH')
     if (hash === previous) return { hash, bytes: null }
     await send('resize')
-    const checksum = (await until(/^BOARDSIZED=[a-f0-9]{64}$/)).at(-1)!.slice(11)
+    const checksum = await readHash('BOARDSIZED', resizeTimeoutMs)
     const blocks: Buffer[] = []
     for (let i = 0; ; i++) {
       await send(String(i))
@@ -67,11 +78,16 @@ async function remoteImage(path: string, computer: string, home: string, previou
 }
 
 export function avatars(storage: StorageApi, log: (error: unknown) => Promise<void>) {
-  const warned = new Set<string>()
+  const retryAfter = new Map<string, number>()
+  const waiting: (() => void)[] = []
+  let active = 0
   async function get(computer: string, bot: string, home: string | null, path: string) {
     if (!home) return null
     const key = cacheKey(computer, bot)
     return dedupe(key, async () => {
+      if ((retryAfter.get(key) ?? 0) > Date.now()) return null
+      if (active < maxConcurrentReads) active++
+      else await new Promise<void>((resolve) => waiting.push(resolve))
       try {
         const meta = await storage.get(key)
         const record = isChunkRecord(meta) ? meta : undefined
@@ -88,6 +104,7 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
               : (
                   await execute('bash', ['-c', [...resize, 'cat "$file"'].join('; ')], {
                     cwd: home,
+                    timeout: resizeTimeoutMs,
                     encoding: 'buffer',
                     maxBuffer: 256 * 1024,
                   })
@@ -101,13 +118,17 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
         const image = bytes ?? existing
         if (!image || !validPng(image) || image.length > maxStoredBytes) throw Error('Invalid or oversized avatar')
         if (bytes) await writeChunks(storage, key, bytes, { source, computer }, existing ? record : undefined)
+        retryAfter.delete(key)
         return image.toString('base64')
       } catch (error) {
-        if (!warned.has(key)) {
-          warned.add(key)
-          await log({ key, error })
-        }
+        const firstFailure = !retryAfter.has(key)
+        retryAfter.set(key, Date.now() + failureRetryMs)
+        if (firstFailure) await log({ key, error })
         return null
+      } finally {
+        const next = waiting.shift()
+        if (next) next()
+        else active--
       }
     })
   }

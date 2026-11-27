@@ -238,10 +238,10 @@ export function mergeQueue(
       const skip = (reason: string): MergeResult => ({ pr, result: 'failed', reason })
       const repo = repos[pr.repo]
       if (!repo?.ok) return skip('repository settings unavailable')
-      const { blockers, methods } = assessMerge(pr, repo.value)
+      const { blockers, methods, defaultMethod } = assessMerge(pr, repo.value)
       if (blockers[0]) return skip(bulkBlockerReason[blockers[0]])
       if (!pr.sha) return skip('missing PR revision, refresh and try again')
-      const method = methods.includes(prefs.mergeMethod) ? prefs.mergeMethod : methods[0]!
+      const method = methods.includes(prefs.mergeMethod) ? prefs.mergeMethod : defaultMethod!
       const unavailable = "GitHub didn't respond, try again"
       try {
         const response = await panelRequest(
@@ -259,7 +259,7 @@ export function mergeQueue(
         if (!response.ok) {
           const unreachable =
             response.kind === 'network' || response.kind === 'timeout' || (response.status ?? 0) >= 500
-          return skip(unreachable ? unavailable : 'GitHub declined the merge')
+          return skip(unreachable ? unavailable : fromFailure(response, 'merge').short || 'GitHub declined the merge')
         }
       } catch {
         return skip(unavailable)

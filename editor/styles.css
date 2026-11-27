@@ -27,6 +27,12 @@
   --undo-foreground: #f2f3f5;
   --undo-muted: #b1b5bf;
   --undo-action: #c2c6ce;
+  --summary-bg: #1f242c;
+  --summary-text: #e8eaed;
+  --summary-muted: #8b929c;
+  --summary-accent: #8b8cf8;
+  --summary-success: #3fb950;
+  --summary-warning: #e3b341;
   --badge-text: #14171b;
   --settings: #1d2229;
   --group: #ffffff06;
@@ -2601,12 +2607,6 @@ article .check:focus-visible {
 }
 
 .bulk-summary {
-  --summary-bg: #1f242c;
-  --summary-text: #e8eaed;
-  --summary-muted: #8b929c;
-  --summary-accent: #8b8cf8;
-  --summary-success: #3fb950;
-  --summary-warning: #e3b341;
   position: fixed;
   left: 50%;
   top: 50%;

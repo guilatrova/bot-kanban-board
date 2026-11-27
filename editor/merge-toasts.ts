@@ -3,7 +3,7 @@ import { countLabel, shortRef } from '../src/core/presentation'
 import { panelRequest } from './panel-request'
 import type { MergePreferences } from '../src/core/merge'
 import { prKey, type MappedPr } from '../src/core/model'
-import { button, el, notice, openExternal } from './dom'
+import { button, el, externalLink } from './dom'
 
 export type MergeResult = { pr: MappedPr } & (
   | { result: 'merged' | 'merged (manual retry)' }
@@ -54,15 +54,7 @@ function bulkSummary(results: MergeResult[]) {
     const row = el('div', '', 'bulk-row')
     const label = el('span', (duplicates.has(pr.number) ? shortRef(pr) : '#' + pr.number) + ' ')
     label.append(el('span', reason, 'bulk-reason'))
-    const open = el('a', 'Open')
-    open.href = pr.url
-    open.target = '_blank'
-    open.rel = 'noopener'
-    open.onclick = (event) => {
-      event.preventDefault()
-      void openExternal(pr.url).catch(notice)
-    }
-    row.append(label, open)
+    row.append(label, externalLink('Open', pr.url))
     rows.append(row)
   }
   toast.append(rows)

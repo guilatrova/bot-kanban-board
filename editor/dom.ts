@@ -62,6 +62,17 @@ export async function openExternal(url: string) {
   const result = await orca.shell?.openExternal(url)
   if (!result?.opened) notice('GitHub did not open. Allow the link in Orca and try again.')
 }
+export function externalLink(label: string, url: string) {
+  const link = el('a', label)
+  link.href = url
+  link.target = '_blank'
+  link.rel = 'noopener'
+  link.onclick = (event) => {
+    event.preventDefault()
+    void openExternal(url).catch(notice)
+  }
+  return link
+}
 export function external(label: string, url: string) {
   return button(label, () => openExternal(url))
 }

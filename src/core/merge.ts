@@ -66,13 +66,25 @@ export interface Warning {
 }
 export const largeChangeLines = 5000
 
+const blockerText = {
+  conflicts: 'Resolve the conflicts on GitHub and refresh.',
+  permission: 'Push permission required. Ask a repository maintainer to merge.',
+  methods: 'No merge method is enabled. Contact a repository maintainer.',
+} as const
+
+export const bulkBlockerReason = {
+  [blockerText.conflicts]: 'has conflicts',
+  [blockerText.permission]: 'push permission required',
+  [blockerText.methods]: 'no merge method enabled',
+}
+
 export function assessMerge(pr: PullRequest, repo: RepositoryFacts) {
-  const blockers: string[] = [],
+  const blockers: (keyof typeof bulkBlockerReason)[] = [],
     warnings: Warning[] = []
   const methods = mergeMethods.filter((m) => repo.methods.includes(m))
-  if (pr.mergeable === 'CONFLICTING') blockers.push('Resolve the conflicts on GitHub and refresh.')
-  if (!repo.push) blockers.push('Push permission required. Ask a repository maintainer to merge.')
-  if (!methods.length) blockers.push('No merge method is enabled. Contact a repository maintainer.')
+  if (pr.mergeable === 'CONFLICTING') blockers.push(blockerText.conflicts)
+  if (!repo.push) blockers.push(blockerText.permission)
+  if (!methods.length) blockers.push(blockerText.methods)
   if (pr.draft) warnings.push({ text: 'Draft · It will be marked ready first.' })
   if (pr.base !== repo.defaultBranch)
     warnings.push({ text: 'Targets ' + pr.base + ' instead of ' + repo.defaultBranch + '.' })

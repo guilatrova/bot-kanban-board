@@ -300,7 +300,7 @@ export default async function activate(host: OrcaWorkerApi) {
       publish()
       try {
         let current = pr
-        if (!demo) {
+        if (!demo && !input.bulk) {
           const live = await mergePreflight(await path('ghPath'), input, data, recordMerged, removeOpen, publish)
           if (!live.ok) return live
           current = live.value

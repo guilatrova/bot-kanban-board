@@ -1,19 +1,14 @@
 import { age } from '../src/core/presentation'
 import { type MergedPr } from '../src/core/merge'
 import { prKey } from '../src/core/model'
-import { el, openExternal, notice } from './dom'
+import { el, externalLink } from './dom'
 import { icon } from './lanes'
 
 export function mergedRow(pr: MergedPr) {
   const node = el('div', '', 'merged-card'),
     meta = el('small'),
     url = 'https://github.com/' + pr.repo + '/pull/' + pr.number
-  const link = el('a', prKey(pr))
-  link.href = url
-  link.onclick = (e) => {
-    e.preventDefault()
-    void openExternal(url).catch(notice)
-  }
+  const link = externalLink(prKey(pr), url)
   link.className = 'gh'
   link.append(icon('M6 18 18 6M7 6h11v11'))
   meta.append(link, ' · ', el('time', age(pr.mergedAt)))

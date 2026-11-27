@@ -97,7 +97,12 @@ export function mergeToasts(prefs: MergePreferences, settings: HTMLButtonElement
             results.length > 1
               ? 'Batch merged (' + results.filter((r) => r.result !== 'failed').length + '/' + results.length + ')'
               : 'PR merged',
-          body: results.map((r) => prKey(r.pr) + ': ' + r.result + ' ' + r.pr.url).join('\n'),
+          body: results
+            .map(
+              (r) =>
+                prKey(r.pr) + ': ' + (r.result === 'failed' ? 'not merged: ' + r.reason : r.result) + ' ' + r.pr.url,
+            )
+            .join('\n'),
         },
         { timeoutMs: 120000 },
       ),

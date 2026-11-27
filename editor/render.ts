@@ -81,7 +81,7 @@ export function view(
   function start(prs: MappedPr[]) {
     if (queue.busy || snapshot?.sources.github.status !== 'fresh') return
     select.clear()
-    void queue.start(prs).catch(notice)
+    void queue.start(prs, snapshot.repos).catch(notice)
   }
   const drawer = drawers((pr) => start([pr]), actions.selector)
   const columns = new Map<Lane, ReturnType<typeof makeLane>>()

@@ -35,6 +35,8 @@ const transfer =
     'echo BOARDHASH=${hash%% *}',
     'read -r -t 60 start',
     ...resize,
+    'resized=$(shasum -a 256 < "$file")',
+    'echo BOARDSIZED=${resized%% *}',
     'while read -r -t 60 n; do echo BOARDSTART=$n',
     `dd if="$file" bs=${transferSize} skip="$n" count=1 2>/dev/null | base64 | tr -d "\\n" | fold -w 1024`,
     'printf "\\nBOARDDONE=%s\\n" "$n"',
@@ -47,6 +49,7 @@ async function remoteImage(path: string, computer: string, home: string, previou
     const hash = (await until(/^BOARDHASH=[a-f0-9]{64}$/)).at(-1)!.slice(10)
     if (hash === previous) return { hash, bytes: null }
     await send('resize')
+    const checksum = (await until(/^BOARDSIZED=[a-f0-9]{64}$/)).at(-1)!.slice(11)
     const blocks: Buffer[] = []
     for (let i = 0; ; i++) {
       await send(String(i))
@@ -58,6 +61,7 @@ async function remoteImage(path: string, computer: string, home: string, previou
       if (bytes.length < transferSize) break
     }
     const bytes = Buffer.concat(blocks)
+    if (digest(bytes) !== checksum) throw Error('Incomplete resized avatar')
     return { hash, bytes }
   })
 }
@@ -96,7 +100,7 @@ export function avatars(storage: StorageApi, log: (error: unknown) => Promise<vo
         count(bytes ? 'misses' : 'hits')
         const image = bytes ?? existing
         if (!image || !validPng(image) || image.length > maxStoredBytes) throw Error('Invalid or oversized avatar')
-        if (bytes) await writeChunks(storage, key, bytes, { source, computer }, record)
+        if (bytes) await writeChunks(storage, key, bytes, { source, computer }, existing ? record : undefined)
         return image.toString('base64')
       } catch (error) {
         if (!warned.has(key)) {

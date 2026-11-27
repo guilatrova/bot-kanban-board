@@ -9,7 +9,9 @@ class ReadFailure extends Error {
 export function reader(binary: 'orca' | 'gh', path: string) {
   return async <T>(args: string[], normalize: (v: unknown) => T): Promise<T> => {
     const execute = () => runCli(binary, args, path)
-    const result = await (args.includes('--method') ? execute() : dedupe(JSON.stringify([binary, path, args]), execute))
+    const readOnly =
+      binary === 'gh' ? !args.includes('--method') : args.slice(0, 3).some((v) => v === 'list' || v === 'ps')
+    const result = await (readOnly ? dedupe(JSON.stringify([binary, path, args]), execute) : execute())
     if (!result.ok) throw new ReadFailure(result)
     try {
       return normalize(result.value)

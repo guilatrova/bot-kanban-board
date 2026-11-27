@@ -1,3 +1,4 @@
+import { dedupe } from './dedupe'
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { StorageApi } from 'orca'
 import { storageGroup } from './chunked-storage'
@@ -112,8 +113,8 @@ export function failureLog(dir = pluginDataFolder(), fallback: (message: string)
       return null
     })
     return {
-      get: (key) => orca.storage.get(key),
-      keys: () => orca.storage.keys(),
+      get: (key) => dedupe('storage:' + key, () => orca.storage.get(key)),
+      keys: () => dedupe('storage-keys', () => orca.storage.keys()),
       delete: (key) => orca.storage.delete(key),
       onDidChange: (listener) => orca.storage.onDidChange(listener),
       async set(key, value) {

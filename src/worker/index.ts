@@ -1,5 +1,5 @@
 import { measure } from './metrics'
-import { dedupe } from './dedupe'
+import { dedupe, inFlight } from './dedupe'
 import { watchItems } from './refresh-items'
 import { invalidateOrca } from './sources/orca'
 import { configureCliCache } from './cli'
@@ -29,11 +29,11 @@ export default async function activate(host: OrcaWorkerApi) {
     host,
     (step, fields) => void write({ step, fields, error: null }),
   )
-  let settings = await orca.settings.get()
+  const readSettings = () => dedupe('settings', () => orca.settings.get())
+  let settings = await readSettings()
   const demo = settings.demo === true
   orca.settings.onDidChange(() => {
-    void orca.settings
-      .get()
+    void readSettings()
       .then((value) => {
         settings = value
       })
@@ -95,22 +95,14 @@ export default async function activate(host: OrcaWorkerApi) {
     }, 250)
   }
   const evaluateBells = await notifications(orca, data, publish, storage)
-  let itemJob: Promise<void> | null = null,
-    prJob: Promise<void | Failure> | null = null
-  let previousPrs = data.sources.github
   function refreshItems() {
-    if (itemJob) return itemJob
-    return (itemJob = dedupe('refresh-items', () =>
-      measuredRefresh(() => refreshItemData(orca, data, path, saved, avatar, evaluateBells, publish)),
-    )
-      .catch((error) => {
+    return dedupe('refresh-items', () =>
+      measuredRefresh(() => refreshItemData(orca, data, path, saved, avatar, evaluateBells, publish)).catch((error) => {
         report(error)
         data.sources.orca = { ...data.sources.orca, status: 'failed' }
         publish()
-      })
-      .finally(() => {
-        itemJob = null
-      }))
+      }),
+    )
   }
   const visible = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | undefined,
@@ -127,9 +119,8 @@ export default async function activate(host: OrcaWorkerApi) {
   function refreshPrs(): Promise<void | Failure> {
     if (limitedUntil > Date.now()) return planPoll().catch(reportRefreshFailure)
 
-    if (prJob) return prJob
-    previousPrs = data.sources.github
-    return (prJob = dedupe('refresh-prs', () =>
+    const previousPrs = data.sources.github
+    return dedupe('refresh-prs', () =>
       measuredRefresh(async () => {
         const result = await github(await path('ghPath'), new Date())
         const search = result.ok ? result.value.merged : result
@@ -148,6 +139,7 @@ export default async function activate(host: OrcaWorkerApi) {
           data.error = null
           publish()
           await saved.save('github')
+          await pruneFiles().catch(report)
           await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded })
         }
         if (!search.ok) {
@@ -164,18 +156,15 @@ export default async function activate(host: OrcaWorkerApi) {
           limitedUntil = 0
         }
         publish()
-      }),
+      })
+        .catch((error) => {
+          if (data.sources.github === previousPrs) data.sources.github = { ...data.sources.github, status: 'failed' }
+          publish()
+          throw error
+        })
+        .finally(planPoll)
+        .catch(reportRefreshFailure),
     )
-      .catch((error) => {
-        if (data.sources.github === previousPrs) data.sources.github = { ...data.sources.github, status: 'failed' }
-        publish()
-        throw error
-      })
-      .finally(async () => {
-        prJob = null
-        await planPoll()
-      })
-      .catch(reportRefreshFailure))
   }
   orca.panels.handle('board.visibility', async ({ visible: shown }, context) => {
     const id = context.panel.id
@@ -183,7 +172,7 @@ export default async function activate(host: OrcaWorkerApi) {
       const first = !visible.size
       visible.add(id)
       if (!demo && first && limitedUntil <= Date.now()) await refreshPrs()
-      else if (!prJob) await planPoll()
+      else if (!inFlight('refresh-prs')) await planPoll()
     } else {
       visible.delete(id)
       if (!visible.size) clearTimeout(timer)
@@ -220,7 +209,7 @@ export default async function activate(host: OrcaWorkerApi) {
   orca.panels.handle('board.refresh', async () => {
     if (demo) publish()
     else {
-      if (itemJob) await itemJob
+      await inFlight('refresh-items')
       invalidateOrca('all')
       await Promise.all([refreshItems(), refreshPrs()])
     }
@@ -241,7 +230,7 @@ export default async function activate(host: OrcaWorkerApi) {
     demo ? 'Demo chat selected.' : jump(orca, data.computers, await path('orcaPath'), input),
   )
   async function reconcile(input: { repo: string; number: number }) {
-    await prJob
+    await inFlight('refresh-prs')
     const result = await readBoardPr(
       await path('ghPath'),
       { ...input, prOnly: true },
@@ -252,6 +241,7 @@ export default async function activate(host: OrcaWorkerApi) {
     )
     if (!result.ok) report(result)
     await saved.save('github')
+    await pruneFiles().catch(report)
   }
   orca.panels.handle(
     'pr.close',
@@ -337,7 +327,7 @@ export default async function activate(host: OrcaWorkerApi) {
       }
     }),
   )
-  serveFiles(orca, storage, data, path, logged)
+  const pruneFiles = serveFiles(orca, storage, data, path, logged)
   registerBoardCommands(orca, async () => (demo ? null : await path('orcaPath')))
   if (demo) return
   watchItems(
@@ -346,7 +336,7 @@ export default async function activate(host: OrcaWorkerApi) {
     () => Boolean(visible.size),
     () => Number(settings.itemsSeconds) || 60,
     async (kind, environment, bot) => {
-      if (itemJob) await itemJob
+      await inFlight('refresh-items')
       invalidateOrca(kind, environment, bot)
       await refreshItems()
     },

@@ -1,12 +1,14 @@
 import { count } from './metrics'
-import { digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
+import { deleteChunks, digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
 import { dedupe } from './dedupe'
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { StorageApi } from 'orca'
 import type { Snapshot } from '../protocol'
-import { prKey } from '../core/model'
+import { prKey, type PullRequest } from '../core/model'
 import { files } from './sources/github'
 import type { failureLog } from './failure-log'
+const fileKey = (pr: PullRequest) =>
+  pr.sha && pr.baseSha ? 'files-' + digest(JSON.stringify([prKey(pr), pr.sha, pr.baseSha])) : null
 export function serveFiles(
   orca: OrcaWorkerApi,
   storage: StorageApi,
@@ -27,7 +29,7 @@ export function serveFiles(
           message: 'The pull request changed.',
           next: 'Reopen its drawer.',
         }
-      const cacheKey = pr.sha && pr.baseSha ? 'files-' + digest(JSON.stringify([input.key, pr.sha, pr.baseSha])) : null
+      const cacheKey = fileKey(pr)
       const payload = await dedupe('pr.files:' + (cacheKey ?? key), async () => {
         const record = cacheKey ? await storage.get(cacheKey) : null
         if (cacheKey && isChunkRecord(record)) {
@@ -39,7 +41,8 @@ export function serveFiles(
         const result = await files(await path('ghPath'), pr)
         if (!result.ok) return result
         const json = JSON.stringify(result.value)
-        if (cacheKey) await writeChunks(storage, cacheKey, Buffer.from(json), {}).catch((e) => orca.log(String(e)))
+        if (cacheKey && data.prs.some((p) => prKey(p) === input.key && fileKey(p) === cacheKey))
+          await writeChunks(storage, cacheKey, Buffer.from(json), {}).catch((e) => orca.log(String(e)))
         return { ok: true as const, value: json }
       })
       if (!payload.ok) return payload
@@ -48,4 +51,16 @@ export function serveFiles(
       return { ok: true as const, value: { data: json.slice(input.offset, end), end: end >= json.length } }
     }),
   )
+  let last = ''
+  return async function prune() {
+    const live = new Set(data.prs.map(fileKey).filter((k) => k !== null))
+    const signature = JSON.stringify([...live].sort())
+    if (last === signature) return
+    for (const key of await storage.keys()) {
+      if (!/^files-[a-f0-9]{64}$/.test(key) || live.has(key)) continue
+      const record = await storage.get(key)
+      if (isChunkRecord(record)) await deleteChunks(storage, key, record)
+    }
+    last = signature
+  }
 }

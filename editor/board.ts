@@ -6,22 +6,32 @@ import { readViews } from './views'
 import { readActions } from './item-actions'
 import { view } from './render'
 import { notice, el, button } from './dom'
-import type { Snapshot } from '../src/protocol'
+import { applyChanges } from '../src/core/snapshot-diff'
+import { cached, persist } from './frame-cache'
+import type { Preferences } from '../src/protocol'
+import type { BoardReply, Snapshot, Version } from '../src/protocol'
 async function start() {
-  const demo = (await orca.settings.get('demo')) === true
-  const settings = await readMergeSettings(demo)
-  const loading = skeleton(settings.prefs.compact)
+  type Stored = Version & { snapshot: Snapshot; preferences: Preferences }
+  const cacheKey = 'bot-board-v1'
+  let stored = cached<Stored>(cacheKey)
+  const loading = skeleton(false)
   const state = el('div', '', 'first-error')
   state.setAttribute('role', 'alert')
   const reason = el('span')
   const again = button('Try again', () => run(true))
   state.append(reason, again)
-  document.body.append(loading)
+  if (!stored) document.body.append(loading)
   const visibility = (shown: boolean, initial = false) =>
     panelRequest('board.visibility', { shown, initial }, { timeoutMs: 120000 })
-  document.addEventListener('visibilitychange', () => void visibility(!document.hidden).catch(notice))
-  window.addEventListener('pagehide', () => void visibility(false).catch(notice))
-  await visibility(!document.hidden, true).catch(notice)
+  let visibilityTimer: ReturnType<typeof setTimeout>
+  document.addEventListener('visibilitychange', () => {
+    clearTimeout(visibilityTimer)
+    visibilityTimer = setTimeout(() => void visibility(!document.hidden).catch(notice), 100)
+  })
+  window.addEventListener('pagehide', () => {
+    clearTimeout(visibilityTimer)
+    void visibility(false).catch(notice)
+  })
   let board: ReturnType<typeof view> | undefined
   let drawn = false
   let latest: Snapshot
@@ -30,19 +40,42 @@ async function start() {
   }
   async function read(fresh = false) {
     const chunks: string[] = []
+    let reply: BoardReply
     for (let index = 0; ; index++) {
-      const chunk = await panelRequest('board.get', { index, fresh }, { timeoutMs: 120000 })
-      chunks.push(chunk.data)
-      if (index + 1 === chunk.count) break
+      const part = await panelRequest(
+        'board.get',
+        { index, fresh, visible: !document.hidden, epoch: stored?.epoch, revision: stored?.revision },
+        { timeoutMs: 120000 },
+      )
+      if ('kind' in part) {
+        reply = part
+        break
+      }
+      chunks.push(part.data)
+      if (index + 1 === part.count) {
+        reply = JSON.parse(chunks.join('')) as BoardReply
+        break
+      }
     }
-    const data = JSON.parse(chunks.join('')) as Snapshot
+    const snapshot = reply.kind === 'full' ? reply.snapshot : applyChanges(stored!.snapshot, reply.changes)
+    stored = {
+      epoch: reply.epoch,
+      revision: reply.revision,
+      snapshot,
+      preferences: reply.preferences ?? stored!.preferences,
+    }
+    persist(cacheKey, stored)
+    await draw(snapshot)
+  }
+  async function draw(data: Snapshot) {
     latest = data
     if (!board) {
-      const [saved, actions, collapsed] = await Promise.all([
-        readViews(Boolean(data.demo), roster),
-        readActions(Boolean(data.demo)),
-        orca.storage.get('collapsed'),
+      const [saved, actions, settings] = await Promise.all([
+        readViews(Boolean(data.demo), roster, stored!.preferences),
+        readActions(Boolean(data.demo), stored!.preferences),
+        readMergeSettings(Boolean(data.demo), stored!.preferences),
       ])
+      const collapsed = stored!.preferences.collapsed
       board = view(
         saved,
         settings,
@@ -95,7 +128,22 @@ async function start() {
       again.disabled = false
     }
   }
-  orca.plugin.on('board.changed', () => void run())
+  if (stored) await draw(stored.snapshot)
+  orca.plugin.on('board.changed', (push) => {
+    if (
+      reading ||
+      !stored ||
+      stored.epoch !== push.epoch ||
+      stored.revision !== push.baseRevision ||
+      'resync' in push
+    ) {
+      void run()
+      return
+    }
+    stored = { ...stored, revision: push.revision, snapshot: applyChanges(stored.snapshot, push.changes) }
+    persist(cacheKey, stored)
+    void draw(stored.snapshot).catch(notice)
+  })
   orca.plugin.on('board.focus', () => board?.focus())
   await run(true)
 }

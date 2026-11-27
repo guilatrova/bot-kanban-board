@@ -1,5 +1,4 @@
 import { bodyIssueRefs } from '../core/normalize'
-import { maxOpenPrs } from '../core/pr-sync'
 import type { IssueRef } from '../core/model'
 import { isChunkRecord, readChunks, writeChunks, type ChunkRecord } from './chunked-storage'
 import type { StorageApi } from 'orca'
@@ -49,10 +48,7 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
           typeof saved.total !== 'number'
         )
           return
-        data.prs = saved.prs
-          .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))
-          .slice(0, maxOpenPrs)
-          .map(migratePr)
+        data.prs = saved.prs.sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).map(migratePr)
         data.merged = saved.merged.map(migratePr)
         data.repos = saved.repos
         data.total = saved.total
@@ -63,7 +59,7 @@ export function savedBoard(storage: StorageApi, data: Snapshot, log: (message: s
           Number.isFinite(Date.parse(saved.fullSyncedAt ?? ''))
         ) {
           data.login = saved.login
-          data.allOpenLoaded = saved.allOpenLoaded && saved.total <= maxOpenPrs
+          data.allOpenLoaded = saved.allOpenLoaded
           data.syncedAt = saved.syncedAt
           data.fullSyncedAt = saved.fullSyncedAt
         }

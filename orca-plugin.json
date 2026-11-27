@@ -39,9 +39,9 @@
       {
         "key": "itemsSeconds",
         "type": "integer",
-        "default": 30,
-        "title": "Item refresh interval (seconds)",
-        "minimum": 10,
+        "default": 60,
+        "title": "Visible board item safety sweep interval (seconds)",
+        "minimum": 30,
         "maximum": 3600
       },
       {

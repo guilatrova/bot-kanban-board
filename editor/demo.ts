@@ -10,7 +10,9 @@ data.notificationsOff = state === 'notifications-off'
 const handlers = new Map<string, (v: unknown) => void>()
 const attempts = new Map<number, number>()
 let failNext = state === 'failure'
-const send = () => handlers.get('board.changed')?.(null)
+let revision = 0
+const send = () =>
+  handlers.get('board.changed')?.({ epoch: 'demo', baseRevision: revision, revision: ++revision, resync: true })
 const fake = {
   settings: { get: (key: string) => key === 'demo' },
   storage: {
@@ -25,9 +27,11 @@ const fake = {
       if (k === 'board.get' && state === 'first-error' && !attempts.has(-1)) {
         attempts.set(-1, 1)
         return {
-          index: 0,
-          count: 1,
-          data: JSON.stringify({
+          epoch: 'demo',
+          revision,
+          kind: 'full',
+          preferences: {},
+          snapshot: {
             ...data,
             sources: { ...data.sources, github: { status: 'failed', at: 0 } },
             prs: [],
@@ -35,10 +39,21 @@ const fake = {
             prsAt: 0,
             banner: 'Can’t reach GitHub (HTTP 502). Trying again in 90 seconds.',
             error: { ok: false, message: 'HTTP 502', next: '', command: 'gh api' },
-          }),
+          },
         }
       }
-      if (k === 'board.get') return { index: 0, count: 1, data: JSON.stringify(data) }
+      if (k === 'board.get')
+        return {
+          epoch: 'demo',
+          revision,
+          kind: 'full',
+          snapshot: data,
+          preferences: Object.fromEntries(
+            Object.keys(sessionStorage)
+              .filter((k) => k.startsWith('demo-') || k === 'collapsed')
+              .map((k) => [k, fake.storage.get(k)]),
+          ),
+        }
       if (k === 'pr.read' && input) {
         const pr = stackOrder(data.prs).find((p) => prKey(p) === prKey(input))
         return { ok: true, value: pr ? { merged: false, pr, facts: data.repos[pr.repo] } : { merged: true } }

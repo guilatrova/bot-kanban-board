@@ -1,3 +1,10 @@
+import type { StorageApi } from 'orca'
+import { digest, isChunkRecord, readChunks, writeChunks } from './chunked-storage'
+
+let cache: StorageApi | undefined
+export function configureCliCache(storage: StorageApi) {
+  cache = storage
+}
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
 import { access } from 'node:fs/promises'
@@ -60,13 +67,25 @@ export async function runCli(
   }
   try {
     const path = await binaryPath(binary, configured)
-    const { stdout } = await execute(path, headers ? [args[0]!, '-i', ...args.slice(1)] : args, {
+    const cacheKey =
+      headers && !args.includes('--method') && args[1] !== 'graphql'
+        ? 'rest-' + digest(JSON.stringify([path, args]))
+        : null
+    const meta = cacheKey && cache ? await cache.get(cacheKey) : null
+    const record = isChunkRecord(meta) && 'etag' in meta && typeof meta.etag === 'string' ? meta : null
+    const previous = record && cache && cacheKey ? await readChunks(cache, cacheKey, record) : null
+    const conditional = previous && record ? ['-H', 'If-None-Match: ' + record.etag] : []
+    const { stdout } = await execute(path, headers ? [args[0]!, '-i', ...conditional, ...args.slice(1)] : args, {
       env,
       timeout: timeoutSeconds * 1000,
       maxBuffer: 64 * 1024 * 1024,
     })
     if (format === 'text') return { ok: true, value: stdout }
-    const json: unknown = JSON.parse(headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout)
+    if (previous && /^HTTP\/[^ ]+ 304\b/.test(stdout)) return { ok: true, value: JSON.parse(previous.toString()) }
+    const body = headers ? stdout.replace(/^HTTP\/[^]*?\r?\n\r?\n/, '') : stdout
+    const json: unknown = JSON.parse(body)
+    const etag = stdout.split(/\r?\n\r?\n/, 1)[0]?.match(/^etag:[ \t]*([^\r\n]+)/im)?.[1]
+    if (etag && cacheKey && cache) await writeChunks(cache, cacheKey, Buffer.from(body), { etag }, record ?? undefined)
     if (binary === 'gh') return { ok: true, value: json }
     if (json && typeof json === 'object' && 'ok' in json && json.ok === true && 'result' in json)
       return { ok: true, value: json.result }

@@ -220,6 +220,7 @@ export function pullRequest(input: unknown): PullRequest {
     url: str(p, 'url'),
     draft: p.isDraft,
     crossRepository: p.isCrossRepository,
+    ...(typeof p.baseRefOid === 'string' ? { baseSha: p.baseRefOid } : {}),
     ...(typeof p.headRefOid === 'string' ? { sha: p.headRefOid } : {}),
     ...mappingFields(p),
     base: str(p, 'baseRefName'),

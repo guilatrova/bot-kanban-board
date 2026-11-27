@@ -1,3 +1,5 @@
+export type Preferences = Record<string, import('orca').JsonValue>
+import type { Changes } from './core/snapshot-diff'
 import type { MergedPr, MergeMethod, RepositoryFacts } from './core/merge'
 export interface BotMessage {
   computer: string
@@ -50,6 +52,14 @@ export type PanelRejection = {
   stack: string | null
   calls: string[]
 }
+export type Version = { epoch: string; revision: number }
+export type BoardReply = Version & { preferences?: Preferences } & (
+    | { kind: 'full'; snapshot: Snapshot }
+    | { kind: 'diff'; changes: Changes }
+  )
+export type BoardPush = Version & { baseRevision: number } & ({ changes: Changes } | { resync: true })
+export const responseBudget = 900 * 1024
+export const pushBudget = 200 * 1024
 export type Chunk = { index: number; count: number; data: string }
 declare module 'orca' {
   interface PluginRequests {
@@ -57,7 +67,10 @@ declare module 'orca' {
     'storage.failure': { input: { key: string; valueBytes: number; error: string }; output: null }
     'bot.tell': { input: BotMessage; output: boolean }
     'board.visibility': { input: { shown: boolean; initial?: boolean }; output: null }
-    'board.get': { input: { index: number; fresh?: boolean }; output: Chunk }
+    'board.get': {
+      input: Partial<Version> & { index?: number; fresh?: boolean; visible?: boolean }
+      output: Chunk | BoardReply
+    }
     'pr.read': {
       input: { repo: string; number: number; prOnly?: boolean }
       output: Source<
@@ -81,7 +94,7 @@ declare module 'orca' {
     'board.jump': { input: { computer: string; bot: string; number?: number; workspace?: string }; output: string }
   }
   interface PluginPanelEvents {
-    'board.changed': null
+    'board.changed': BoardPush
     'merge.progress': Progress
     'board.focus': null
   }

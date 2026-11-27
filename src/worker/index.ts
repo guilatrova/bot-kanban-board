@@ -1,3 +1,5 @@
+import { configureCliCache } from './cli'
+import { serveFiles } from './pr-files'
 import { boardStatus } from './status'
 import { failureLog } from './failure-log'
 import { readBoardPr, readFailureToLog, refreshFailure } from './read-board-pr'
@@ -10,7 +12,7 @@ import type { Snapshot, Progress } from '../protocol'
 import { prKey, type Failure } from '../core/model'
 import { refreshItemData } from './refresh-items'
 import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
-import { github, files, mergePr, closePr } from './sources/github'
+import { github, mergePr, closePr } from './sources/github'
 import { openBoard } from './board-file'
 import { sendBotMessage } from './bot-message'
 import { avatars } from './avatars'
@@ -18,7 +20,16 @@ import { notifications } from './bells'
 import { jump } from './jump'
 import { demoBoard, demoMerge } from '../demo'
 export default async function activate(orca: OrcaWorkerApi) {
-  const demo = (await orca.settings.get('demo')) === true
+  let settings = await orca.settings.get()
+  const demo = settings.demo === true
+  orca.settings.onDidChange(() => {
+    void orca.settings
+      .get()
+      .then((value) => {
+        settings = value
+      })
+      .catch((error) => orca.log(String(error)))
+  })
 
   const data: Snapshot = demo
     ? demoBoard()
@@ -41,6 +52,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     void write({ step: 'plugin', error })
   }
   const storage = loggedStorage(orca)
+  configureCliCache(storage)
   const saved = savedBoard(storage, data, report)
   if (!demo) await Promise.all([saved.load('orca'), saved.load('github')])
   const status = await boardStatus(orca, data, demo, report)
@@ -61,17 +73,17 @@ export default async function activate(orca: OrcaWorkerApi) {
   }
   const closingPrs = new Set<string>()
   const busy = (key: string) => closingPrs.has(key) || data.running?.includes(key)
-  const path = async (key: string) => String((await orca.settings.get(key)) || '')
+  const path = async (key: string) => String(settings[key] || '')
   const avatar = avatars(storage, (error) => write({ step: 'avatar', error }))
   if (!demo) await avatar.clearOversized().catch(report)
-  const fileCache = new Map<string, string>()
+
   let postTimer: ReturnType<typeof setTimeout> | undefined
   function publish() {
     if (postTimer) return
     postTimer = setTimeout(() => {
       postTimer = undefined
       status()
-      orca.panels.post('board.changed', null)
+      publishSnapshot()
     }, 250)
   }
   const evaluateBells = await notifications(orca, data, publish, storage)
@@ -98,7 +110,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     retryAt = 0,
     limitedUntil = 0
   async function planPoll() {
-    const interval = Math.max(10, Number(await orca.settings.get('prSeconds')) || 90) * 1000
+    const interval = Math.max(10, Number(settings.prSeconds) || 90) * 1000
     clearTimeout(timer)
     if (visible.size && !demo)
       timer = setTimeout(() => void refreshPrs(), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
@@ -110,7 +122,7 @@ export default async function activate(orca: OrcaWorkerApi) {
     if (prJob) return manual ? prJob.then(() => refreshPrs(true)) : prJob
     previousPrs = data.sources.github
     return (prJob = (async () => {
-      const result = await github(await path('ghPath'), data, new Date(), manual)
+      const result = await github(await path('ghPath'), new Date())
       const search = result.ok ? result.value.merged : result
       if (result.ok && search.ok) {
         for (const [key, row] of landed) if (!mergedToday([row]).length) landed.delete(key)
@@ -128,8 +140,6 @@ export default async function activate(orca: OrcaWorkerApi) {
         publish()
         await saved.save('github')
         await evaluateBells({ open: data.prs, merged: data.merged, complete: result.value.allOpenLoaded })
-        const valid = new Set(data.prs.map((p) => prKey(p) + '@' + p.updated))
-        for (const key of fileCache.keys()) if (!valid.has(key)) fileCache.delete(key)
       }
       if (!search.ok) {
         data.error = search
@@ -178,7 +188,12 @@ export default async function activate(orca: OrcaWorkerApi) {
     }
     return null
   })
-  serveSnapshots(orca, data, () => refresh(true))
+  const publishSnapshot = serveSnapshots(orca, data, (id, shown) => {
+    if (shown) {
+      visible.add(id)
+      if (visible.size === 1) refresh(true)
+    }
+  })
   orca.panels.handle(
     'pr.read',
     logged(
@@ -299,30 +314,7 @@ export default async function activate(orca: OrcaWorkerApi) {
       }
     }),
   )
-  orca.panels.handle(
-    'pr.files',
-    logged('PR files', async (input) => {
-      if (demo) return { ok: true as const, value: { data: '[]', end: true } }
-      const pr = data.prs.find((p) => prKey(p) === input.key && p.updated === input.updated),
-        key = input.key + '@' + input.updated
-      if (!pr)
-        return {
-          ok: false as const,
-          command: 'gh api pulls/files',
-          message: 'The pull request changed.',
-          next: 'Reopen its drawer.',
-        }
-      let json = fileCache.get(key)
-      if (!json) {
-        const result = await files(await path('ghPath'), pr)
-        if (!result.ok) return result
-        json = JSON.stringify(result.value)
-        fileCache.set(key, json)
-      }
-      const end = input.offset + 32000
-      return { ok: true as const, value: { data: json.slice(input.offset, end), end: end >= json.length } }
-    }),
-  )
+  serveFiles(orca, storage, data, path, logged)
   for (const id of ['bot-kanban-board.needs-you', 'bot-kanban-board.open'])
     orca.commands.register(id, async () => {
       try {
@@ -352,11 +344,13 @@ export default async function activate(orca: OrcaWorkerApi) {
       } catch (e) {
         report(e)
       } finally {
-        const seconds = Number(await orca.settings.get(key)) || defaultValue
-        setTimeout(() => void tick().catch(report), Math.max(10, seconds) * 1000)
+        const seconds = Number(settings[key]) || defaultValue
+        setTimeout(() => void tick().catch(report), Math.max(30, seconds) * 1000)
       }
     }
     void tick().catch(report)
   }
-  schedule('itemsSeconds', 30, refreshItems)
+  schedule('itemsSeconds', 60, async () => {
+    if (visible.size) await refreshItems()
+  })
 }

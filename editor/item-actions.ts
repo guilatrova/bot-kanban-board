@@ -1,3 +1,5 @@
+import type { Preferences } from '../src/protocol'
+import { preferenceKeys } from '../src/core/startup-preferences'
 import { itemStatusActions } from '../src/core/flags'
 import { panelRequest } from './panel-request'
 import { setStorage } from './storage'
@@ -17,9 +19,9 @@ import { panel, ask } from './controls'
 import { el, button, labels, notice } from './dom'
 
 const names = { ...labels, done: 'Done', canceled: 'Cancel' }
-export async function readActions(demo: boolean) {
-  const key = demo ? 'demo-actions' : 'actions'
-  const stored = await orca.storage.get(key)
+export async function readActions(demo: boolean, initial?: Preferences) {
+  const key = preferenceKeys(demo).actions
+  const stored = initial ? initial[key] : await orca.storage.get(key)
   const state = parseActions(stored)
   return { state, save: () => setStorage(key, state) }
 }

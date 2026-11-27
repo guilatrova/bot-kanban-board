@@ -1,3 +1,5 @@
+import type { Preferences } from '../src/protocol'
+import { preferenceKeys } from '../src/core/startup-preferences'
 import { setStorage } from './storage'
 import { version } from '../src/version'
 import { mergedLimit, mergeMethods, shortMethodLabels, type MergePreferences } from '../src/core/merge'
@@ -5,9 +7,9 @@ import { botKey, type Computer } from '../src/core/model'
 import { badge, button, el, external, notice } from './dom'
 import { icon } from './lanes'
 import { popover } from './popover'
-export async function readMergeSettings(demo: boolean) {
-  const key = demo ? 'demo-merge-preferences' : 'merge-preferences'
-  const state = await orca.storage.get(key)
+export async function readMergeSettings(demo: boolean, initial?: Preferences) {
+  const key = preferenceKeys(demo).merge
+  const state = initial ? initial[key] : await orca.storage.get(key)
   const prefs: MergePreferences = {
     mergeMethod: 'squash',
     askBeforeMerging: true,

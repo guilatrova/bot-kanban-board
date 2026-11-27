@@ -13,15 +13,14 @@ export async function readBoardPr(
   demo: boolean,
   changed: () => Promise<void>,
   recordMerged: (row: MergedPr) => void,
+  removeOpen: (key: string) => void,
 ): Promise<PluginRequests['pr.read']['output']> {
   const { repo, number } = input
   const read = demo ? undefined : await source('gh api graphql', () => readPull(ghPath, { repo, number }))
   if (read && !read.ok) return read
   const live = read?.value
   if (live?.closed) {
-    const before = data.prs.length
-    data.prs = data.prs.filter((p) => prKey(p) !== prKey(input))
-    data.total -= before - data.prs.length
+    removeOpen(prKey(input))
     await changed()
     return { ok: true, value: { closed: true, merged: false } }
   }

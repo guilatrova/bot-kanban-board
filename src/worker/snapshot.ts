@@ -44,6 +44,7 @@ export function serveSnapshots(
   orca: OrcaWorkerApi,
   data: Snapshot,
   opened: (id: string, visible: boolean) => Promise<void>,
+  visibilityChanged: (id: string, visible: boolean) => Promise<void>,
 ) {
   const epoch = randomUUID()
   let hasReader = false
@@ -51,6 +52,11 @@ export function serveSnapshots(
   let current = JSON.parse(JSON.stringify(data)) as Snapshot
   const history = new Map<number, Changes>()
   const pages = new Map<string, string[]>()
+  orca.panels.handle('board.visibility', async ({ visible }, { panel }) => {
+    if (!visible) pages.delete(panel.id)
+    await visibilityChanged(panel.id, visible)
+    return null
+  })
   function publish() {
     const next = JSON.parse(JSON.stringify(data)) as Snapshot
     const diff = changes(current, next)
@@ -73,46 +79,52 @@ export function serveSnapshots(
     const id = ctx.panel.id,
       index = input.index ?? 0
     if (!index) {
-      if (input.fresh) await opened(id, input.visible !== false)
-      publish()
-      hasReader = true
-      let base: Snapshot | undefined
-      if (
-        input.epoch === epoch &&
-        input.revision !== undefined &&
-        (input.revision === revision || history.has(input.revision))
-      ) {
-        base = current
-        for (let i = revision - 1; i >= input.revision; i--) base = applyChanges(base, history.get(i)!)
-      }
-      const reply: BoardReply = base
-        ? { epoch, revision, kind: 'diff', changes: changes(base, current) }
-        : { epoch, revision, kind: 'full', snapshot: current }
-      if (input.fresh) {
-        const keys = Object.values(preferenceKeys(Boolean(data.demo)))
-        reply.preferences = Object.fromEntries(
-          await Promise.all(
-            keys.map(async (key) => [key, await dedupe('startup:' + key, () => orca.storage.get(key))]),
-          ),
-        )
-      }
-      const json = JSON.stringify(reply)
-      if (Buffer.byteLength(json) < responseBudget && fits(reply, responseBudget)) return JSON.parse(json) as BoardReply
       const parts: string[] = []
-      let part = '',
-        size = 0
-      for (const char of json) {
-        const bytes = Buffer.byteLength(JSON.stringify(char)) - 2
-        if (size + bytes > responseBudget - 128) {
-          parts.push(part)
-          part = ''
-          size = 0
-        }
-        part += char
-        size += bytes
-      }
-      parts.push(part)
       pages.set(id, parts)
+      try {
+        if (input.fresh) await opened(id, input.visible !== false)
+        publish()
+        hasReader = true
+        let base: Snapshot | undefined
+        if (
+          input.epoch === epoch &&
+          input.revision !== undefined &&
+          (input.revision === revision || history.has(input.revision))
+        ) {
+          base = current
+          for (let i = revision - 1; i >= input.revision; i--) base = applyChanges(base, history.get(i)!)
+        }
+        const reply: BoardReply = base
+          ? { epoch, revision, kind: 'diff', changes: changes(base, current) }
+          : { epoch, revision, kind: 'full', snapshot: current }
+        if (input.fresh) {
+          const keys = Object.values(preferenceKeys(Boolean(data.demo)))
+          reply.preferences = Object.fromEntries(
+            await Promise.all(
+              keys.map(async (key) => [key, await dedupe('startup:' + key, () => orca.storage.get(key))]),
+            ),
+          )
+        }
+        const json = JSON.stringify(reply)
+        if (Buffer.byteLength(json) < responseBudget && fits(reply, responseBudget))
+          return JSON.parse(json) as BoardReply
+        if (pages.get(id) !== parts) throw Error('Snapshot expired. Refresh the board.')
+        let part = '',
+          size = 0
+        for (const char of json) {
+          const bytes = Buffer.byteLength(JSON.stringify(char)) - 2
+          if (size + bytes > responseBudget - 128) {
+            parts.push(part)
+            part = ''
+            size = 0
+          }
+          part += char
+          size += bytes
+        }
+        parts.push(part)
+      } finally {
+        if (!parts.length && pages.get(id) === parts) pages.delete(id)
+      }
     }
     const parts = pages.get(id)
     if (!parts?.[index]) throw Error('Snapshot expired. Refresh the board.')

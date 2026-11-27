@@ -109,11 +109,11 @@ export default async function activate(host: OrcaWorkerApi) {
     failures = 0,
     retryAt = 0,
     limitedUntil = 0
+  const prInterval = () => Math.max(10, Number(settings.prSeconds) || 90) * 1000
   async function planPoll() {
-    const interval = Math.max(10, Number(settings.prSeconds) || 90) * 1000
     clearTimeout(timer)
     if (visible.size && !demo)
-      timer = setTimeout(() => void refreshPrs(), retryAt ? Math.max(1, retryAt - Date.now()) : interval)
+      timer = setTimeout(() => void refreshPrs(), retryAt ? Math.max(1, retryAt - Date.now()) : prInterval())
   }
   const reportRefreshFailure = (error: unknown) => refreshFailure(error, report)
   function refreshPrs(): Promise<void | Failure> {
@@ -132,7 +132,6 @@ export default async function activate(host: OrcaWorkerApi) {
           data.total = result.value.total - (result.value.prs.length - data.prs.length)
           data.login = result.value.login
           data.syncedAt = result.value.syncedAt
-          data.fullSyncedAt = result.value.fullSyncedAt
           data.allOpenLoaded = result.value.allOpenLoaded
           data.prsAt = Date.now()
           data.sources.github = { status: 'fresh', at: data.prsAt }
@@ -166,8 +165,7 @@ export default async function activate(host: OrcaWorkerApi) {
         .catch(reportRefreshFailure),
     )
   }
-  orca.panels.handle('board.visibility', async ({ visible: shown }, context) => {
-    const id = context.panel.id
+  async function visibilityChanged(id: string, shown: boolean) {
     if (shown) {
       const first = !visible.size
       visible.add(id)
@@ -178,32 +176,33 @@ export default async function activate(host: OrcaWorkerApi) {
       visible.delete(id)
       if (!visible.size) clearTimeout(timer)
     }
-    return null
-  })
-  const publishSnapshot = serveSnapshots(orca, data, async (id, shown) => {
-    if (shown && !demo) {
-      visible.add(id)
-      if (!data.prsAt && !data.itemsAt) {
-        await Promise.all([refreshPrs(), refreshItems()])
-        return
+  }
+  const publishSnapshot = serveSnapshots(
+    orca,
+    data,
+    async (id, shown) => {
+      if (shown && !demo) {
+        visible.add(id)
+        if (!data.prsAt && !data.itemsAt) {
+          await Promise.all([refreshPrs(), refreshItems()])
+          return
+        }
+        if (visible.size === 1) {
+          if (!data.itemsAt || data.sources.orca.status === 'stale') void refreshItems()
+          if (!data.prsAt || data.sources.github.status === 'stale' || Date.now() - data.prsAt >= prInterval())
+            void refreshPrs()
+          else void planPoll()
+        }
       }
-      if (visible.size === 1) {
-        if (!data.itemsAt || data.sources.orca.status === 'stale') void refreshItems()
-        if (
-          !data.prsAt ||
-          data.sources.github.status === 'stale' ||
-          Date.now() - data.prsAt >= Math.max(10, Number(settings.prSeconds) || 90) * 1000
-        )
-          void refreshPrs()
-        else void planPoll()
-      }
-    }
-  })
+    },
+    visibilityChanged,
+  )
   orca.panels.handle(
     'pr.read',
     logged(
       'PR read',
-      async (input) => readBoardPr(await path('ghPath'), input, data, demo, async () => publish(), recordMerged),
+      async (input) =>
+        readBoardPr(await path('ghPath'), input, data, demo, async () => publish(), recordMerged, removeOpen),
       readFailureToLog,
     ),
   )
@@ -239,6 +238,7 @@ export default async function activate(host: OrcaWorkerApi) {
       false,
       async () => publish(),
       recordMerged,
+      removeOpen,
     )
     if (!result.ok) report(result)
     await saved.save('github')
@@ -266,7 +266,7 @@ export default async function activate(host: OrcaWorkerApi) {
         return result
       } finally {
         closingPrs.delete(key)
-        await reconcile(input)
+        void reconcile(input).catch(report)
       }
     }),
   )
@@ -324,7 +324,7 @@ export default async function activate(host: OrcaWorkerApi) {
       } finally {
         data.running = data.running?.filter((k) => k !== key)
         publish()
-        if (!demo) await reconcile(input)
+        if (!demo) void reconcile(input).catch(report)
       }
     }),
   )

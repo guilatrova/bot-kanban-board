@@ -9,18 +9,23 @@ import { view } from './render'
 import { notice, el, button, loadPictures } from './dom'
 import { applyChanges } from '../src/core/snapshot-diff'
 import { cached, persist } from './frame-cache'
+import { preferenceKeys } from '../src/core/startup-preferences'
 import type { Preferences } from '../src/protocol'
 import type { BoardReply, Snapshot, Version } from '../src/protocol'
 async function start() {
   type Stored = Version & { snapshot: Snapshot; preferences: Preferences }
   const cacheKey = 'bot-board-v1'
+  const compactKey = 'bot-board-compact'
   let stored = cached<Stored>(cacheKey)
   onStorageWrite((key, value) => {
+    if (key === preferenceKeys(false).merge || key === preferenceKeys(true).merge) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) persist(compactKey, value.compact === true)
+    }
     if (!stored || !(key in stored.preferences)) return
     stored.preferences[key] = value
     persist(cacheKey, stored)
   })
-  const loading = skeleton(false)
+  const loading = skeleton(cached<boolean>(compactKey) === true)
   const state = el('div', '', 'first-error')
   state.setAttribute('role', 'alert')
   const reason = el('span')
@@ -46,6 +51,7 @@ async function start() {
     return latest.computers.flatMap((c) => (c.source.ok ? c.source.value.bots : []))
   }
   async function read(fresh = false) {
+    const requestFresh = fresh || !stored
     const chunks: string[] = []
     let reply: BoardReply
     for (let index = 0; ; index++) {
@@ -54,7 +60,7 @@ async function start() {
         {
           ...trafficReport(),
           index,
-          fresh,
+          fresh: requestFresh,
           visible: !document.hidden,
           ...(stored ? { epoch: stored.epoch, revision: stored.revision } : {}),
         },
@@ -93,6 +99,7 @@ async function start() {
         readActions(Boolean(data.demo), stored!.preferences),
         readMergeSettings(Boolean(data.demo), stored!.preferences),
       ])
+      persist(compactKey, settings.prefs.compact)
       const collapsed = stored!.preferences.collapsed
       const folded = new Set<string>(
         Array.isArray(collapsed) ? collapsed.filter((k): k is string => typeof k === 'string') : ['waiting', 'closed'],
@@ -147,13 +154,11 @@ async function start() {
   }
   if (stored) await draw(stored.snapshot)
   orca.plugin.on('board.changed', (push) => {
-    if (
-      reading ||
-      !stored ||
-      stored.epoch !== push.epoch ||
-      stored.revision !== push.baseRevision ||
-      'resync' in push
-    ) {
+    if (!stored) {
+      void run(true)
+      return
+    }
+    if (reading || stored.epoch !== push.epoch || stored.revision !== push.baseRevision || 'resync' in push) {
       void run()
       return
     }

@@ -1,4 +1,4 @@
-import { type SyncRow } from '../../core/pr-sync'
+import { maxOpenPrs, type SyncRow } from '../../core/pr-sync'
 import { mergedToday, mergeMethods, type RepositoryFacts } from '../../core/merge'
 import type { MergeInput, Progress } from '../../protocol'
 import { prKey, type PullRequest, type Source } from '../../core/model'
@@ -59,7 +59,9 @@ export function github(path: string, now: Date) {
           alias +
           ':search(query:' +
           JSON.stringify(search) +
-          ',type:ISSUE,first:100,after:' +
+          ',type:ISSUE,first:' +
+          (alias === 'open' ? maxOpenPrs - prs.length : 100) +
+          ',after:' +
           JSON.stringify(cursor) +
           '){issueCount pageInfo{endCursor hasNextPage} nodes{...Pull}}'
         )
@@ -89,7 +91,8 @@ export function github(path: string, now: Date) {
           }
         }
         const info = obj(page.pageInfo)
-        if (info.hasNextPage) cursors.set(alias, str(info, 'endCursor'))
+        if (info.hasNextPage && (alias !== 'open' || prs.length < maxOpenPrs))
+          cursors.set(alias, str(info, 'endCursor'))
         else cursors.delete(alias)
       }
     }
@@ -97,7 +100,6 @@ export function github(path: string, now: Date) {
     return {
       login,
       syncedAt,
-      fullSyncedAt: syncedAt,
       prs,
       total,
       repos,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assessMerge, mergedToday, type RepositoryFacts } from '../src/core/merge'
+import { assessMerge, mustConfirmMerge, mergedToday, type RepositoryFacts } from '../src/core/merge'
 import { pullRequest } from '../src/core/normalize'
 import fixture from './fixtures/board.json'
 const pr = {
@@ -63,5 +63,22 @@ describe('merge assessment', () => {
     const dates = [new Date(2025, 4, 2), new Date(2025, 4, 1, 23, 59), new Date(2025, 4, 2, 23), new Date(2025, 4, 3)]
     const entries = dates.map((d, number) => ({ ...pr, number, mergedAt: d.toISOString() }))
     expect(mergedToday(entries, dates[0]).map((p) => p.number)).toEqual([2, 0])
+  })
+})
+
+describe('merge confirmation', () => {
+  const clean = { ...pr, sha: 'head' }
+  const warned = { ...clean, checks: null, additions: 6000 }
+  it('skips warnings when confirmation is off', () => {
+    expect(mustConfirmMerge(warned, repo, 'merge', undefined, false)).toBe(false)
+  })
+  it('requires confirmation for conflicts even when confirmation is off', () => {
+    expect(mustConfirmMerge({ ...clean, mergeable: 'CONFLICTING' }, repo, 'merge', undefined, false)).toBe(true)
+  })
+  it('asks by default and reuses approval unless new warnings appear', () => {
+    const confirmed = { mergeable: clean.mergeable, warnings: [] }
+    expect(mustConfirmMerge(clean, repo, 'merge', undefined, true)).toBe(true)
+    expect(mustConfirmMerge(clean, repo, 'merge', confirmed, true)).toBe(false)
+    expect(mustConfirmMerge(warned, repo, 'merge', confirmed, true)).toBe(true)
   })
 })

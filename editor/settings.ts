@@ -120,7 +120,7 @@ export function settings(saved: MergePreferences, update: () => void, computers:
         toggle(
           'askBeforeMerging',
           'Ask before merging',
-          'Off: clean pull requests merge in one step. Warnings and conflicts always ask.',
+          'Off: merges run in one step with 5 seconds to undo. Blocked merges still ask.',
         ),
       )
       const after = group('After a merge'),

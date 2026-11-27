@@ -39,53 +39,98 @@ export function boardHeader(
   let repoMenu: ReturnType<typeof popover> | undefined
   let repoRows: [string, number][] = []
   let activeRepos = new Set<string>()
+  let ownerPrefix = ''
+  let drawRepoMenu: (() => void) | undefined
+  const displayName = (repo: string) => (repo === noRepo ? repo : repo.slice(ownerPrefix.length))
   const changeRepos = (selection: Set<string>) => {
-    saved.current = { ...saved.current, name: '', repos: selection.size ? [...selection] : 'all' }
+    saved.current = { ...saved.current, name: '', repos: selection.size === repoRows.length ? 'all' : [...selection] }
     update()
   }
   const repoChip = button(
-    'All repos',
+    '',
     () => {
       if (repoMenu?.node.isConnected) return repoMenu.close(true)
-      repoMenu = popover(repoChip)
+      const menu = popover(repoChip)
+      repoMenu = menu
+      menu.node.classList.add('repo-menu')
+      const head = el('div', '', 'repo-head')
+      const search = el('input', '', 'repo-search')
+      search.placeholder = 'Search repos'
+      search.setAttribute('aria-label', search.placeholder)
+      const meta = el('div', '', 'repo-meta')
+      const counter = el('span')
+      const actions = el('span')
+      actions.append(
+        button('Select all', () => changeRepos(new Set(repoRows.map(([repo]) => repo)))),
+        ' · ',
+        button('Clear', () => changeRepos(new Set())),
+      )
+      meta.append(counter, actions)
+      head.append(search, meta)
+      const list = el('div', '', 'repo-list')
+      list.setAttribute('role', 'menu')
+      list.setAttribute('aria-label', 'Repositories')
+      menu.node.append(head, list)
+      drawRepoMenu = () => {
+        const focused = document.activeElement?.closest<HTMLElement>('[data-repo]')?.dataset.repo
+        counter.textContent = activeRepos.size + ' of ' + repoRows.length
+        list.replaceChildren()
+        const query = search.value.toLowerCase()
+        for (const [repo, count] of repoRows) {
+          const label = displayName(repo)
+          if (!label.toLowerCase().includes(query)) continue
+          const row = el('div', '', 'repo-option')
+          row.tabIndex = 0
+          row.dataset.repo = repo
+          row.setAttribute('role', 'menuitemcheckbox')
+          row.setAttribute('aria-checked', String(activeRepos.has(repo)))
+          row.setAttribute('aria-label', label)
+          row.onclick = () => {
+            const next = new Set(activeRepos)
+            if (!next.delete(repo)) next.add(repo)
+            changeRepos(next)
+          }
+          row.onkeydown = (e) => {
+            if (e.target === row && (e.key === ' ' || e.key === 'Enter')) {
+              e.preventDefault()
+              row.click()
+            }
+          }
+          const name = el('span', label, 'repo-name')
+          if (repo === noRepo) {
+            list.append(el('hr'))
+            name.classList.add('unassigned')
+            const tip = el('span', 'ⓘ', 'info-tip')
+            tip.tabIndex = 0
+            tip.dataset.tip = 'Items without a linked PR or issue'
+            tip.setAttribute('aria-label', tip.dataset.tip)
+            name.append(tip)
+          } else row.title = repo
+          const only = button(
+            'Only',
+            (event) => {
+              event.stopPropagation()
+              changeRepos(new Set([repo]))
+              menu.close(true)
+            },
+            'only',
+          )
+          row.append(el('span', '', 'checkbox-mark'), name, el('span', String(count), 'repo-count'), only)
+          list.append(row)
+          if (repo === focused) row.focus({ preventScroll: true })
+        }
+        if (!list.childElementCount) list.append(el('div', 'No repo matches “' + search.value + '”', 'repo-empty'))
+        menu.position(false)
+      }
+      search.oninput = drawRepoMenu
+      menu.node.addEventListener('dismiss', () => {
+        drawRepoMenu = undefined
+      })
       drawRepoMenu()
-      repoMenu.position()
+      search.focus()
     },
-    'chip',
+    'chip repo-chip',
   )
-  function drawRepoMenu() {
-    if (!repoMenu?.node.isConnected) return
-    const menu = repoMenu
-    const all = repoRows.map(([repo]) => repo)
-    menu.node.replaceChildren(
-      ...repoRows.map(([repo, count]) => {
-        const checked = activeRepos.has(repo)
-        const row = el('div', '', 'repo-row')
-        const toggle = button(repo, () => changeRepos(toggleSelection(activeRepos, all, repo, false)))
-        toggle.setAttribute('role', 'menuitemcheckbox')
-        toggle.setAttribute('aria-checked', String(checked))
-        toggle.prepend(el('span', checked ? '☑' : '☐'))
-        toggle.append(el('small', String(count)))
-        toggle.disabled = checked && activeRepos.size === 1
-        const only = button(
-          'Only',
-          () => {
-            changeRepos(new Set([repo]))
-            menu.close(true)
-          },
-          'repo-only',
-        )
-        row.append(toggle, only)
-        return row
-      }),
-      el('hr'),
-      button('Show all repos', () => {
-        changeRepos(new Set())
-        menu.close(true)
-      }),
-      el('small', '“No repo” means items with no linked PR or issue.', 'mlabel'),
-    )
-  }
   filter.append(icon('M3 5h18M6 12h12M10 19h4'))
   filter.setAttribute('aria-label', 'Filters')
   updated.setAttribute('aria-label', 'Refresh board')
@@ -113,16 +158,21 @@ export function boardHeader(
         }),
       )
       controls.sync()
-      repoRows = [...board.repos].sort(([a], [b]) => (a === noRepo ? 1 : b === noRepo ? -1 : a.localeCompare(b)))
+      repoRows = [...board.repos].sort(([a, ac], [b, bc]) =>
+        a === noRepo ? 1 : b === noRepo ? -1 : bc - ac || a.localeCompare(b),
+      )
+      const real = repoRows.map(([repo]) => repo).filter((repo) => repo !== noRepo)
+      const prefix = real[0]?.match(/^[^/]+\//)?.[0] ?? ''
+      ownerPrefix = real.every((repo) => repo.startsWith(prefix)) ? prefix : ''
       activeRepos = new Set(repoRows.map(([repo]) => repo).filter(board.acceptsRepo))
-      const filtered = board.reposFiltered
-      repoChip.textContent = !filtered
-        ? 'All repos'
+      const value = !board.reposFiltered
+        ? 'All'
         : activeRepos.size === 1
-          ? [...activeRepos][0]!
-          : activeRepos.size + ' of ' + repoRows.length + ' repos'
-      repoChip.classList.toggle('repo-filtered', filtered)
-      drawRepoMenu()
+          ? displayName([...activeRepos][0]!)
+          : String(activeRepos.size)
+      repoChip.replaceChildren('Repos ', el('span', value), ' ▾')
+      repoChip.classList.toggle('repo-filtered', board.reposFiltered)
+      drawRepoMenu?.()
       filters.replaceChildren(
         ...board.chips.map((b) => {
           const key = botKey(b.computer, b.name)

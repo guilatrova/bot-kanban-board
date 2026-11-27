@@ -218,7 +218,7 @@ export default async function activate(host: OrcaWorkerApi) {
   serveAvatars(
     orca,
     avatar,
-    () => (demo ? [] : data.computers),
+    () => (!demo && data.sources.orca.status === 'fresh' ? data.computers : []),
     () => path('orcaPath'),
   )
   orca.panels.handle(

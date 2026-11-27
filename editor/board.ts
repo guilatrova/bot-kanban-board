@@ -92,7 +92,7 @@ async function start() {
   }
   async function draw(data: Snapshot, preferencesChanged = false) {
     latest = data
-    if (!data.demo) loadPictures(data.computers, stored!.epoch, confirmed)
+    if (!data.demo) loadPictures(data.computers, stored!.epoch, confirmed && data.sources.orca.status === 'fresh')
     if (!board || preferencesChanged) {
       const [saved, actions, settings] = await Promise.all([
         readViews(Boolean(data.demo), roster, stored!.preferences),

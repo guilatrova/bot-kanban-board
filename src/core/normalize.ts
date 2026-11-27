@@ -100,7 +100,8 @@ export function workspaces(data: unknown, computer: string): Workspace[] {
       remote: null,
       path: opt(w.path),
       branch: opt(w.branch)?.replace(/^refs\/heads\//, '') ?? null,
-      home: w.botHome === true ? opt(w.path) : opt(w.botHome),
+      // A runtime's worktree list also contains homes on other execution hosts.
+      home: !w.hostId || w.hostId === 'local' ? (w.botHome === true ? opt(w.path) : opt(w.botHome)) : null,
     }))
 }
 function worker(w: Record<string, unknown>): Worker {

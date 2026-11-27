@@ -80,10 +80,7 @@ declare module 'orca' {
       >
     }
     'board.refresh': { input: undefined; output: null }
-    'avatar.get': {
-      input: { computer: string; bot: string; offset: number }
-      output: { data: string; next: number | null } | null
-    }
+    'avatars.get': { input: { keys: string[] }; output: { avatars: Record<string, string>; remaining: string[] } }
     'bell.set': { input: { bell: Bell; on: boolean }; output: null }
     'pr.close': { input: { repo: string; number: number }; output: Source<null> }
     'pr.merge': { input: MergeInput; output: Source<null> }

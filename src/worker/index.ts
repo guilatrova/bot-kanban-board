@@ -15,7 +15,7 @@ import { assessMerge, mergedToday, type MergedPr } from '../core/merge'
 import { github, mergePr, closePr } from './sources/github'
 import { openBoard } from './board-file'
 import { sendBotMessage } from './bot-message'
-import { avatars } from './avatars'
+import { avatars, serveAvatars } from './avatars'
 import { notifications } from './bells'
 import { jump } from './jump'
 import { demoBoard, demoMerge } from '../demo'
@@ -207,21 +207,12 @@ export default async function activate(orca: OrcaWorkerApi) {
     else refresh(false, true)
     return null
   })
-  orca.panels.handle('avatar.get', async (input) => {
-    if (demo) return null
-    const c = data.computers.find((c) => input.computer === c.key)
-    if (!c?.source.ok) return null
-    const { bots, workspaces } = c.source.value
-    const bot = bots.find((b) => b.name === input.bot)
-    if (!bot) return null
-    return avatar.get(
-      c.key,
-      input.bot,
-      bot.home ?? workspaces.find((w) => w.bot === input.bot && w.home)?.home ?? null,
-      input.offset,
-      await path('orcaPath'),
-    )
-  })
+  serveAvatars(
+    orca,
+    avatar,
+    () => (demo ? [] : data.computers),
+    () => path('orcaPath'),
+  )
   orca.panels.handle(
     'bot.tell',
     async (input) =>

@@ -5,7 +5,7 @@ import { readMergeSettings } from './settings'
 import { readViews } from './views'
 import { readActions } from './item-actions'
 import { view } from './render'
-import { notice, el, button } from './dom'
+import { notice, el, button, loadPictures } from './dom'
 import { applyChanges } from '../src/core/snapshot-diff'
 import { cached, persist } from './frame-cache'
 import type { Preferences } from '../src/protocol'
@@ -69,6 +69,7 @@ async function start() {
   }
   async function draw(data: Snapshot) {
     latest = data
+    if (!data.demo) loadPictures(data.computers, stored!.epoch)
     if (!board) {
       const [saved, actions, settings] = await Promise.all([
         readViews(Boolean(data.demo), roster, stored!.preferences),
